@@ -50,9 +50,17 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
       : gradePublished
   ) === true;
 
+  // Check if student is a graduating candidate (2018 batch / candidate / graduated)
+  const isGraduatingCandidate =
+    student.graduationStatus === 'CANDIDATE' ||
+    student.graduationStatus === 'GRADUATED' ||
+    student.admissionYear === '2018' ||
+    (student.id && student.id.startsWith('2018'));
+
   // Check if Full Graduation Transcript is explicitly permitted for this student
-  // Unless explicitly authorized, it will NOT appear on the student page!
+  // STRICT REQUIREMENT: Only graduating students can have this; non-graduating students never have it!
   const isFullTranscriptAllowed = (
+    isGraduatingCandidate &&
     isStudentReleased &&
     (
       individualFullTranscriptRelease && individualFullTranscriptRelease[student.uid] !== undefined
@@ -128,7 +136,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                 title="የሴሚስተር ትራንስክሪፕት ይመልከቱ"
               >
                 <Printer className="w-4 h-4 text-amber-400" />
-                <span>የሴሚስተር ትራንስክሪፕት</span>
+                <span>የ{currentYear} ዓ.ም ሴሚስተር ትራንስክሪፕት</span>
               </button>
 
               {/* ሙሉ የምረቃ ትራንስክሪፕት button is STRICTLY HIDDEN from students unless explicitly permitted */}

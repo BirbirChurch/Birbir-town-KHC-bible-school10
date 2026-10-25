@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { X, Printer, Download, Award, CheckCircle2, ShieldCheck, GraduationCap, Calendar, BookOpen, Loader2, Lock } from 'lucide-react';
+import { X, Printer, Download, Award, CheckCircle2, ShieldCheck, GraduationCap, Calendar, BookOpen, Loader2, Lock, AlertCircle } from 'lucide-react';
 import { Course, GradeBreakdown, OfficialSignaturesConfig, Student } from '../types.ts';
 import { calculateGradeDetails, getCourseAssessmentItems, getEffectiveGradeValues, getGradeKey, resolveGradeBreakdown } from '../utils/gradeCalculations.ts';
-import { getCurriculumForStudent } from '../data/curriculumCourses.ts';
+import { getCurriculumForStudent, loadHistorical2018Courses } from '../data/curriculumCourses.ts';
 import { CHURCH_LOGO } from '../assets/logo.ts';
 import { downloadElementAsPdf, printElementDirectly } from '../utils/pdfExport.ts';
 import { OFFICIAL_GRADING_SCALE } from '../data/initialData.ts';
@@ -35,29 +35,117 @@ export const GraduationTranscriptModal: React.FC<GraduationTranscriptModalProps>
   const curriculum = useMemo(() => getCurriculumForStudent(student), [student]);
 
   // Compute multi-semester grades and cumulative statistics
+  // Strictly constrained to the 3 administered semesters (2018 Sem 1, 2018 Sem 2, and 2019 Sem 1)
+  // and ONLY showing courses with actually entered grades ("ውጤት የገባውን ብቻ")
   const { semesterRecords, cumulativeCredits, cumulativePoints, cumulativeGPA, graduationHonors } = useMemo(() => {
     let cumCredits = 0;
     let cumPoints = 0;
 
-    // Student deterministic seed for consistent historical grades if not in state
-    let hash = 0;
-    for (let i = 0; i < student.id.length; i++) {
-      hash = (hash * 31 + student.id.charCodeAt(i)) & 0xffffffff;
-    }
+    const historicalCourses = loadHistorical2018Courses();
 
-    const records = curriculum.map((sem, sIdx) => {
+    // 1. Term 1: 2018 ዓ.ም — 1ኛ ሴሚስተር
+    const term1Curriculum = curriculum[0]?.courses || [];
+    const term1Historical = historicalCourses.filter(
+      (c) => (c.academicYear === '2018' || !c.academicYear) && (c.semester === '1' || !c.semester)
+    );
+    const term1CoursesMap = new Map<string, { id: string; code?: string; name: string; credits: number; teacher: string }>();
+    term1Curriculum.forEach((c) => term1CoursesMap.set(c.id, { ...c }));
+    term1Historical.forEach((c) => {
+      term1CoursesMap.set(c.id, {
+        id: c.id,
+        code: c.code || 'DIP-101',
+        name: c.name,
+        credits: c.credits,
+        teacher: c.teacher
+      });
+    });
+
+    // 2. Term 2: 2018 ዓ.ም — 2ኛ ሴሚስተር
+    const term2Curriculum = curriculum[1]?.courses || [];
+    const term2Historical = historicalCourses.filter(
+      (c) => c.academicYear === '2018' && c.semester === '2'
+    );
+    const term2CoursesMap = new Map<string, { id: string; code?: string; name: string; credits: number; teacher: string }>();
+    term2Curriculum.forEach((c) => term2CoursesMap.set(c.id, { ...c }));
+    term2Historical.forEach((c) => {
+      term2CoursesMap.set(c.id, {
+        id: c.id,
+        code: c.code || 'DIP-109',
+        name: c.name,
+        credits: c.credits,
+        teacher: c.teacher
+      });
+    });
+
+    // 3. Term 3: 2019 ዓ.ም — 1ኛ ሴሚስተር
+    const term3Active = allCourses.filter(
+      (c) => c.program === student.program && (c.semester === '1' || !c.semester) && (c.academicYear === '2019' || !c.academicYear)
+    );
+    const term3Curriculum = curriculum[2]?.courses || [];
+    const term3CoursesMap = new Map<string, { id: string; code?: string; name: string; credits: number; teacher: string }>();
+    term3Curriculum.forEach((c) => term3CoursesMap.set(c.id, { ...c }));
+    term3Active.forEach((c) => {
+      term3CoursesMap.set(c.id, {
+        id: c.id,
+        code: c.code || c.id.toUpperCase(),
+        name: c.name,
+        credits: c.credits,
+        teacher: c.teacher
+      });
+    });
+
+    // ONLY the 3 administered terms as strictly requested:
+    // (2018 ዓ.ም 1ኛ ሴሚስተር፣ 2018 ዓ.ም 2ኛ ሴሚስተር እና 2019 ዓ.ም 1ኛ ሴሚስተር)
+    const terms = [
+      {
+        semesterIndex: 1,
+        yearNumber: 1,
+        semesterInYear: 1,
+        academicYear: '2018',
+        semesterNumber: '1',
+        semesterLabel: '1ኛ ዓመት — 1ኛ ሴሚስተር (2018 ዓ.ም)',
+        rawCourses: Array.from(term1CoursesMap.values())
+      },
+      {
+        semesterIndex: 2,
+        yearNumber: 1,
+        semesterInYear: 2,
+        academicYear: '2018',
+        semesterNumber: '2',
+        semesterLabel: '1ኛ ዓመት — 2ኛ ሴሚስተር (2018 ዓ.ም)',
+        rawCourses: Array.from(term2CoursesMap.values())
+      },
+      {
+        semesterIndex: 3,
+        yearNumber: 2,
+        semesterInYear: 1,
+        academicYear: '2019',
+        semesterNumber: '1',
+        semesterLabel: '2ኛ ዓመት — 1ኛ ሴሚስተር (2019 ዓ.ም)',
+        rawCourses: Array.from(term3CoursesMap.values())
+      }
+    ];
+
+    const records = terms.map((term) => {
       let semCredits = 0;
       let semPoints = 0;
 
-      // For diploma curriculum, semester 1 & 2 were taken in 2018 (sem 1 & 2),
-      // and semester 3 & 4 were taken in 2019 (sem 1 & 2).
-      const semYear = sem.semesterIndex <= 2 ? '2018' : (sem.semesterIndex <= 4 ? '2019' : currentYear);
-      const semNumber = String(sem.semesterInYear);
+      const courseRows: Array<{
+        code: string;
+        name: string;
+        credits: number;
+        teacher: string;
+        score: number;
+        letter: string;
+        points: number;
+        desc: string;
+      }> = [];
 
-      const courseRows = sem.courses.map((curCourse, cIdx) => {
-        // Try to match with current system course & grade
+      term.rawCourses.forEach((curCourse) => {
         const matchedCourse = allCourses.find(
-          c => c.program === student.program && (c.name.trim() === curCourse.name.trim() || c.id === curCourse.id)
+          (c) => c.program === student.program && (c.name.trim() === curCourse.name.trim() || c.id === curCourse.id)
+        ) || historicalCourses.find(
+          (c) => c.name.trim() === curCourse.name.trim() || c.id === curCourse.id
         );
 
         let score = 0;
@@ -65,13 +153,13 @@ export const GraduationTranscriptModal: React.FC<GraduationTranscriptModalProps>
         let points = 0;
         let desc = '';
 
-        // 1. Resolve by curriculum course ID with appropriate academic year & semester
+        // 1. Resolve grade breakdown
         const breakdown = resolveGradeBreakdown(
           grades,
           student.uid,
           curCourse.id,
-          semYear,
-          semNumber,
+          term.academicYear,
+          term.semesterNumber,
           student.id
         );
 
@@ -85,14 +173,14 @@ export const GraduationTranscriptModal: React.FC<GraduationTranscriptModalProps>
           }
         }
 
-        // 2. If not found by curCourse.id, try matchedCourse id
-        if (score === 0 && matchedCourse) {
+        // 2. If not found, try matchedCourse id
+        if ((score === 0 || !letter) && matchedCourse && matchedCourse.id !== curCourse.id) {
           const mBreakdown = resolveGradeBreakdown(
             grades,
             student.uid,
             matchedCourse.id,
-            semYear,
-            semNumber,
+            term.academicYear,
+            term.semesterNumber,
             student.id
           );
           if (mBreakdown) {
@@ -106,30 +194,26 @@ export const GraduationTranscriptModal: React.FC<GraduationTranscriptModalProps>
           }
         }
 
+        // Strict Requirement: "ውጤት የገባውን ብቻ እንድያሳይ እደረግ"
+        // Only include if actual score or valid letter has been entered! No synthetic random generation!
+        const hasActualGrade = score > 0 || (Boolean(letter) && letter !== '—' && letter !== '' && desc !== 'አልተሞላም');
 
-        // If no explicit live score yet, generate an authentic grade based on student id and course
-        if (score === 0) {
-          const baseVariation = Math.abs((hash + sIdx * 17 + cIdx * 23) % 25);
-          score = 75 + baseVariation; // 75 - 99
-          const standard = calculateGradeDetails(score);
-          letter = standard.letter;
-          points = standard.points;
-          desc = standard.desc;
+        if (hasActualGrade) {
+          const courseCredits = curCourse.credits || 3;
+          semCredits += courseCredits;
+          semPoints += points * courseCredits;
+
+          courseRows.push({
+            code: curCourse.code || '—',
+            name: curCourse.name,
+            credits: courseCredits,
+            teacher: curCourse.teacher || matchedCourse?.teacher || '—',
+            score,
+            letter,
+            points,
+            desc
+          });
         }
-
-        semCredits += curCourse.credits;
-        semPoints += points * curCourse.credits;
-
-        return {
-          code: curCourse.code,
-          name: curCourse.name,
-          credits: curCourse.credits,
-          teacher: curCourse.teacher,
-          score,
-          letter,
-          points,
-          desc
-        };
       });
 
       const semGPA = semCredits > 0 ? (semPoints / semCredits).toFixed(2) : '0.00';
@@ -137,7 +221,10 @@ export const GraduationTranscriptModal: React.FC<GraduationTranscriptModalProps>
       cumPoints += semPoints;
 
       return {
-        ...sem,
+        semesterIndex: term.semesterIndex,
+        yearNumber: term.yearNumber,
+        semesterInYear: term.semesterInYear,
+        semesterLabel: term.semesterLabel,
         courses: courseRows,
         semesterCredits: semCredits,
         semesterPoints: semPoints,
@@ -147,10 +234,14 @@ export const GraduationTranscriptModal: React.FC<GraduationTranscriptModalProps>
 
     const cGPA = cumCredits > 0 ? (cumPoints / cumCredits).toFixed(2) : '0.00';
     const numCGPA = Number(cGPA);
-    let honors = 'ብቁ (Passed)';
-    if (numCGPA >= 3.8) honors = 'በእጅግ ከፍተኛ ማዕረግ (Great Distinction)';
-    else if (numCGPA >= 3.5) honors = 'በከፍተኛ ማዕረግ (Distinction)';
-    else if (numCGPA >= 3.25) honors = 'በጥሩ ማዕረግ (Very Good)';
+    let honors = 'ውጤት በመጠባበቅ ላይ (No Grades)';
+    if (cumCredits > 0) {
+      if (numCGPA >= 3.8) honors = 'በእጅግ ከፍተኛ ማዕረግ (Great Distinction)';
+      else if (numCGPA >= 3.5) honors = 'በከፍተኛ ማዕረግ (Distinction)';
+      else if (numCGPA >= 3.25) honors = 'በጥሩ ማዕረግ (Very Good)';
+      else if (numCGPA >= 2.0) honors = 'ብቁ (Passed)';
+      else honors = 'ዝቅተኛ (Low Standing)';
+    }
 
     return {
       semesterRecords: records,
@@ -210,6 +301,35 @@ export const GraduationTranscriptModal: React.FC<GraduationTranscriptModalProps>
   };
 
   const approvals = student.graduationApprovedBy || { admin: true, dean: true, registrar: true };
+
+  const isGraduatingCandidate =
+    student.graduationStatus === 'CANDIDATE' ||
+    student.graduationStatus === 'GRADUATED' ||
+    student.admissionYear === '2018' ||
+    (student.id && student.id.startsWith('2018'));
+
+  if (!isGraduatingCandidate) {
+    return (
+      <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center space-y-4 border border-rose-200">
+          <div className="w-14 h-14 bg-rose-100 text-rose-700 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <h3 className="text-base font-extrabold text-slate-900">ይህ ሰነድ ለተመራቂ ተማሪዎች ብቻ ነው!</h3>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            የተሟላ የምረቃ ትራንስክሪፕት የሚሰጠው ለ2018 ተመራቂ ተማሪዎች ብቻ ነው። ተመራቂ ላልሆኑ (የ1ኛ ዓመት) ተማሪዎች ከዚህ ዓመት ({currentYear} ዓ.ም) ውጪ ያለ ምንም የትራንስክሪፕት ሰነድ የለም።
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer transition-all"
+          >
+            መስኮቱን ዝጋ (Close)
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
@@ -386,10 +506,10 @@ export const GraduationTranscriptModal: React.FC<GraduationTranscriptModalProps>
                   <span className="text-slate-500 font-normal w-36">የትምህርት ዝግጅት / መንገድ:</span>
                   <span className="font-bold text-slate-900">
                     {student.program === 'Diploma'
-                      ? '2 ዓመት (በአራት ሴሚስተር የተጠናቀቀ)'
+                      ? '2 ዓመት (የተሰጡ 3 ሴሚስተሮች፦ 2018 1ኛና 2ኛ፣ 2019 1ኛ ሴሚስተር)'
                       : student.degreeTrack === '2_YEAR' || student.priorDiploma
-                      ? '2 ዓመት (በአራት ሴሚስተር — ቀድሞ የመጽሐፍ ቅዱስ ዲፕሎማ ያለው)'
-                      : '3 ዓመት መደበኛ (በ5-6 ሴሚስተር የተጠናቀቀ)'}
+                      ? '2 ዓመት (ቀድሞ የመጽሐፍ ቅዱስ ዲፕሎማ ያለው)'
+                      : '3 ዓመት መደበኛ'}
                   </span>
                 </p>
                 <p className="flex items-center gap-2">
@@ -412,7 +532,7 @@ export const GraduationTranscriptModal: React.FC<GraduationTranscriptModalProps>
             <div className="space-y-5 mb-5">
               <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2 pb-2 border-b border-slate-300">
                 <BookOpen className="w-4 h-4 text-emerald-800" />
-                <span>የተማሩባቸው ሙሉ ኮርሶችና የሴሚስተር ውጤቶች ዝርዝር ሰሌዳ (Detailed Course Curriculum & Term Records)</span>
+                <span>የተሰጡ 3ቱ ሴሚስተሮችና የገቡ ውጤቶች ዝርዝር ሰሌዳ (2018 1ኛና 2ኛ፣ 2019 1ኛ ሴሚስተር — ውጤት የገባቸው ብቻ)</span>
               </h3>
 
               {semesterRecords.map((sem) => (
@@ -446,18 +566,26 @@ export const GraduationTranscriptModal: React.FC<GraduationTranscriptModalProps>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {sem.courses.map((c, cIdx) => (
-                      <tr key={c.code} className="hover:bg-slate-50/60">
-                        <td className="p-2 text-center font-mono text-slate-400">{cIdx + 1}</td>
-                        <td className="p-2 font-mono font-bold text-slate-700 text-[11px]">{c.code}</td>
-                        <td className="p-2 font-bold text-slate-900">{c.name}</td>
-                        <td className="p-2 text-[11px] text-slate-600">{c.teacher}</td>
-                        <td className="p-2 text-center font-mono font-semibold">{c.credits}</td>
-                        <td className="p-2 text-center font-mono font-bold text-slate-950">{c.score}</td>
-                        <td className="p-2 text-center font-black text-slate-900">{c.letter}</td>
-                        <td className="p-2 text-center font-mono font-bold text-emerald-800">{c.points.toFixed(2)}</td>
+                    {sem.courses.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="p-4 text-center text-slate-400 italic">
+                          በዚህ ሴሚስተር እስካሁን የተመዘገበ ውጤት የለም (ምንም ውጤት አልገባም)
+                        </td>
                       </tr>
-                    ))}
+                    ) : (
+                      sem.courses.map((c, cIdx) => (
+                        <tr key={c.code + c.name} className="hover:bg-slate-50/60">
+                          <td className="p-2 text-center font-mono text-slate-400">{cIdx + 1}</td>
+                          <td className="p-2 font-mono font-bold text-slate-700 text-[11px]">{c.code}</td>
+                          <td className="p-2 font-bold text-slate-900">{c.name}</td>
+                          <td className="p-2 text-[11px] text-slate-600">{c.teacher}</td>
+                          <td className="p-2 text-center font-mono font-semibold">{c.credits}</td>
+                          <td className="p-2 text-center font-mono font-bold text-slate-950">{c.score}</td>
+                          <td className="p-2 text-center font-black text-slate-900">{c.letter}</td>
+                          <td className="p-2 text-center font-mono font-bold text-emerald-800">{c.points.toFixed(2)}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                   <tfoot>
                     <tr className="bg-slate-100/90 font-bold border-t border-slate-300 text-slate-900">
