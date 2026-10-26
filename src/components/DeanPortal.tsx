@@ -102,7 +102,9 @@ export const DeanPortal: React.FC<DeanPortalProps> = ({
   onClearAllGrades,
   churchLogo,
   onUpdateStudents,
-  onSaveCourses
+  onSaveCourses,
+  onQuickAssignTeacher,
+  onBatchDeleteCourses
 }) => {
   const [activeTab, setActiveTab] = useState<'courses' | 'supervision' | 'transcripts' | 'teachers' | 'graduation' | 'official_signatures'>('courses');
   const [courseProgramFilter, setCourseProgramFilter] = useState<'ALL' | ProgramType>('ALL');

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User, Award, Calendar, BookOpen, Clock, Printer, AlertTriangle, CheckCircle2, Bookmark, GraduationCap, Lock } from 'lucide-react';
 import { Course, GradeBreakdown, OfficialSignaturesConfig, Student } from '../types.ts';
-import { calculateGradeDetails, calculateStudentGPA, getCourseAssessmentItems, getEffectiveGradeValues, getGradeKey } from '../utils/gradeCalculations.ts';
+import { calculateGradeDetails, calculateStudentGPA, getCourseAssessmentItems, getEffectiveGradeValues, getGradeKey, is2018CandidateStudent } from '../utils/gradeCalculations.ts';
 import { GraduationTranscriptModal } from './GraduationTranscriptModal.tsx';
 
 interface StudentPortalProps {
@@ -40,8 +40,6 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   onOpenTranscript
 }) => {
   const [showGraduationTranscript, setShowGraduationTranscript] = useState(false);
-  const studentCourses = courses.filter((c) => c.program === student.program);
-  const gpa = calculateStudentGPA(student, courses, grades, currentYear, currentSemester);
 
   // Check if grade/transcript release is authorized for this specific student
   const isStudentReleased = (
@@ -51,11 +49,27 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   ) === true;
 
   // Check if student is a graduating candidate (2018 batch / candidate / graduated)
-  const isGraduatingCandidate =
-    student.graduationStatus === 'CANDIDATE' ||
-    student.graduationStatus === 'GRADUATED' ||
-    student.admissionYear === '2018' ||
-    (student.id && student.id.startsWith('2018'));
+  const isGraduatingCandidate = is2018CandidateStudent(student);
+
+  const studentCourses = courses.filter((c) => {
+    if (c.program !== student.program) return false;
+    if (!isGraduatingCandidate) {
+      if (
+        c.academicYear === '2018' ||
+        c.id.startsWith('dip_sem1') ||
+        c.id.startsWith('dip_sem2') ||
+        c.id.startsWith('deg_p')
+      ) {
+        return false;
+      }
+    }
+    if (c.semester && currentSemester && c.semester !== currentSemester) {
+      return false;
+    }
+    return true;
+  });
+
+  const gpa = calculateStudentGPA(student, courses, grades, currentYear, currentSemester);
 
   // Check if Full Graduation Transcript is explicitly permitted for this student
   // STRICT REQUIREMENT: Only graduating students can have this; non-graduating students never have it!

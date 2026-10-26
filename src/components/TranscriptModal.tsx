@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Printer, ShieldCheck, Download, Loader2, Lock } from 'lucide-react';
 import { Course, GradeBreakdown, OfficialSignaturesConfig, Student } from '../types.ts';
-import { calculateGradeDetails, calculateStudentGPA, getCourseAssessmentItems, getEffectiveGradeValues, getGradeKey, resolveGradeBreakdown } from '../utils/gradeCalculations.ts';
+import { calculateGradeDetails, calculateStudentGPA, getCourseAssessmentItems, getEffectiveGradeValues, getGradeKey, resolveGradeBreakdown, is2018CandidateStudent } from '../utils/gradeCalculations.ts';
 import { OFFICIAL_GRADING_SCALE } from '../data/initialData.ts';
 import { CHURCH_LOGO } from '../assets/logo.ts';
 import { downloadElementAsPdf, printElementDirectly } from '../utils/pdfExport.ts';
@@ -31,7 +31,24 @@ export const TranscriptModal: React.FC<TranscriptModalProps> = ({
   allowPdfPrint = true,
   isStudentViewer = false
 }) => {
-  const studentCourses = courses.filter((c) => c.program === student.program);
+  const isCandidate = is2018CandidateStudent(student);
+  const studentCourses = courses.filter((c) => {
+    if (c.program !== student.program) return false;
+    if (!isCandidate) {
+      if (
+        c.academicYear === '2018' ||
+        c.id.startsWith('dip_sem1') ||
+        c.id.startsWith('dip_sem2') ||
+        c.id.startsWith('deg_p')
+      ) {
+        return false;
+      }
+    }
+    if (c.semester && currentSemester && c.semester !== currentSemester) {
+      return false;
+    }
+    return true;
+  });
   const gpa = calculateStudentGPA(student, courses, grades, currentYear, currentSemester);
 
   let totalCredits = 0;

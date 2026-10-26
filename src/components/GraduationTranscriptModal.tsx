@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { X, Printer, Download, Award, CheckCircle2, ShieldCheck, GraduationCap, Calendar, BookOpen, Loader2, Lock, AlertCircle } from 'lucide-react';
 import { Course, GradeBreakdown, OfficialSignaturesConfig, Student } from '../types.ts';
-import { calculateGradeDetails, getCourseAssessmentItems, getEffectiveGradeValues, getGradeKey, resolveGradeBreakdown } from '../utils/gradeCalculations.ts';
+import { calculateGradeDetails, getCourseAssessmentItems, getEffectiveGradeValues, getGradeKey, resolveGradeBreakdown, is2018CandidateStudent } from '../utils/gradeCalculations.ts';
 import { getCurriculumForStudent, loadHistorical2018Courses, getDeletedCourseIdsSet } from '../data/curriculumCourses.ts';
 import { CHURCH_LOGO } from '../assets/logo.ts';
 import { downloadElementAsPdf, printElementDirectly } from '../utils/pdfExport.ts';
@@ -327,11 +327,7 @@ export const GraduationTranscriptModal: React.FC<GraduationTranscriptModalProps>
 
   const approvals = student.graduationApprovedBy || { admin: true, dean: true, registrar: true };
 
-  const isGraduatingCandidate =
-    student.graduationStatus === 'CANDIDATE' ||
-    student.graduationStatus === 'GRADUATED' ||
-    student.admissionYear === '2018' ||
-    (student.id && student.id.startsWith('2018'));
+  const isGraduatingCandidate = is2018CandidateStudent(student);
 
   if (!isGraduatingCandidate) {
     return (

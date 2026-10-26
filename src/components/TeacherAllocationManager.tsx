@@ -67,6 +67,10 @@ export const TeacherAllocationManager: React.FC<TeacherAllocationManagerProps> =
   const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
   const [batchTeacherSelection, setBatchTeacherSelection] = useState<string>('');
 
+  const handleTeacherSelectChange = (courseId: string, newTeacher: string) => {
+    onUpdateCourseTeacher(courseId, newTeacher);
+  };
+
   // Normalized list of teachers ensuring unassigned option is available
   const normalizedTeachers = useMemo(() => {
     const list = teachers.filter((t) => t && t.trim() !== '');

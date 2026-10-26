@@ -222,6 +222,17 @@ export function resolveGradeBreakdown(
   return empty;
 }
 
+export function is2018CandidateStudent(student: Student): boolean {
+  return (
+    student.graduationStatus === 'CANDIDATE' ||
+    student.graduationStatus === 'GRADUATED' ||
+    student.admissionYear === '2018' ||
+    student.degreeTrack === '2_YEAR' ||
+    student.priorDiploma === true ||
+    Boolean(student.id && student.id.startsWith('2018'))
+  );
+}
+
 export function calculateStudentGPA(
   student: Student,
   allCourses: Course[],
@@ -229,15 +240,34 @@ export function calculateStudentGPA(
   year: string,
   sem: string
 ): string {
-  const studentCourses = allCourses.filter(c => c.program === student.program);
+  const isCandidate = is2018CandidateStudent(student);
+
+  const studentCourses = allCourses.filter((c) => {
+    if (c.program !== student.program) return false;
+    if (!isCandidate) {
+      if (
+        c.academicYear === '2018' ||
+        c.id.startsWith('dip_sem1') ||
+        c.id.startsWith('dip_sem2') ||
+        c.id.startsWith('deg_p')
+      ) {
+        return false;
+      }
+    }
+    if (c.semester && sem && c.semester !== sem && sem !== 'ALL') {
+      return false;
+    }
+    return true;
+  });
+
   let totalQualityPoints = 0;
   let totalCredits = 0;
 
-  studentCourses.forEach(course => {
+  studentCourses.forEach((course) => {
     const breakdown = resolveGradeBreakdown(gradesRecord, student.uid, course.id, year, sem, student.id);
     const eff = getEffectiveGradeValues(breakdown, getCourseAssessmentItems(course));
     if (eff.hasAny) {
-      totalQualityPoints += (eff.points * course.credits);
+      totalQualityPoints += eff.points * course.credits;
       totalCredits += course.credits;
     }
   });

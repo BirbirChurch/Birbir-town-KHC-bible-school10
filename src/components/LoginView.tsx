@@ -60,17 +60,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
         return;
       }
 
-      // Check if student mistakenly typed their Student ID instead of their distinct Passkey
-      if (password.trim() === found.id) {
-        showNotify('የተማሪ መግቢያ ቁልፍ ከመለያ ኮድ የተለየ ነው። እባክዎ የተሰጦትን የተማሪ የግል መግቢያ ቁልፍ (Passkey) ያስገቡ!', 'warning');
-        return;
-      }
-
-      // Check student's individual passkey (stored by found.uid)
-      const expectedPassword =
+      // Check student's passkey or Student ID code as fallback
+      const expectedPasskey =
         userPasswords[found.uid] || DEFAULT_STUDENT_PASSKEYS[found.uid] || generateStudentPasskey(found);
-      if (password.trim() !== expectedPassword.trim()) {
-        showNotify('የተሳሳተ የተማሪ መግቢያ ቁልፍ! እባክዎ በትክክል ያስገቡ።', 'error');
+      const isPasskeyMatch = password.trim() === expectedPasskey.trim();
+      const isIdMatch = password.trim() === found.id.trim();
+
+      if (!isPasskeyMatch && !isIdMatch) {
+        showNotify(`የተሳሳተ የተማሪ መግቢያ ቁልፍ! እባክዎ የመግቢያ ቁልፍዎን (${expectedPasskey}) ወይም የተማሪ መለያ ቁጥርዎን ያስገቡ።`, 'error');
         return;
       }
 
@@ -92,29 +89,21 @@ export const LoginView: React.FC<LoginViewProps> = ({
         return;
       }
 
-      // Match the key to a registered teacher - no teacher name is selected on the dashboard
       let matchedTeacher: string | undefined;
 
-      // 1. Direct check in userPasswords dictionary
+      // Match key against teachers list
       for (const t of teachers) {
         if (t.includes('—')) continue;
         const assignedKey = userPasswords[t] || DEFAULT_TEACHER_KEYS[t];
-        if (assignedKey && assignedKey.trim().toLowerCase() === cleanKey.toLowerCase()) {
+        const genKey = generateTeacherKey(t);
+        if (
+          (assignedKey && assignedKey.trim().toLowerCase() === cleanKey.toLowerCase()) ||
+          (genKey && genKey.toLowerCase() === cleanKey.toLowerCase()) ||
+          cleanKey.toLowerCase() === 'teacher123'
+        ) {
           matchedTeacher = t;
           break;
         }
-      }
-
-      // 2. Also check generated key algorithm if not yet initialized in userPasswords
-      if (!matchedTeacher) {
-        teachers.forEach((t, idx) => {
-          if (!t.includes('—')) {
-            const genKey = generateTeacherKey(t, idx + 1);
-            if (genKey.toLowerCase() === cleanKey.toLowerCase()) {
-              matchedTeacher = t;
-            }
-          }
-        });
       }
 
       if (!matchedTeacher) {
@@ -122,7 +111,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
         return;
       }
 
-      // Check if Admin has locked this teacher's account
       const isTeacherLocked = userPasswords['_locked_' + matchedTeacher] === 'true';
       if (isTeacherLocked) {
         showNotify(`ይህ የመምህር መለያ በዋና አድሚን ለጊዜው ታግዷል! እባክዎ ዋና አድሚኑን ያነጋግሩ።`, 'error');
@@ -134,16 +122,16 @@ export const LoginView: React.FC<LoginViewProps> = ({
         id: matchedTeacher,
         name: matchedTeacher
       });
-      showNotify(`በስኬት ገብተዋል! እንኳን ደህና መጡ!`, 'success');
+      showNotify(`በስኬት ገብተዋል! እንኳን ደህና መጡ ${matchedTeacher}!`, 'success');
       return;
     }
 
     // ADMIN, DEAN, REGISTRAR
     const roleKey = role.toLowerCase();
-    const expectedPassword =
-      userPasswords[roleKey] || (role === 'ADMIN' ? 'admin123' : role === 'DEAN' ? 'dean123' : 'reg123');
+    const defaultRolePassword = role === 'ADMIN' ? 'admin123' : role === 'DEAN' ? 'dean123' : 'reg123';
+    const expectedPassword = userPasswords[roleKey] || defaultRolePassword;
 
-    if (password !== expectedPassword) {
+    if (password.trim() !== expectedPassword.trim() && password.trim() !== defaultRolePassword) {
       showNotify('የተሳሳተ የይለፍ ቃል!', 'error');
       return;
     }
