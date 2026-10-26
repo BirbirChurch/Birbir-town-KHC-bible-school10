@@ -53,7 +53,7 @@ import {
 } from './services/firebaseSync.ts';
 
 const DEFAULT_ACADEMIC_YEARS = [
-  '2019', '2020', '2021', '2022', '2023', '2024',
+  '2018', '2019', '2020', '2021', '2022', '2023', '2024',
   '2025', '2026', '2027', '2028', '2029', '2030'
 ];
 
@@ -91,6 +91,21 @@ function mergeCoursesWithPreloaded(incomingCourses: Course[], extraDeletedIds: s
         }
       }
     } catch (_) {}
+
+    try {
+      const storedLocal = localStorage.getItem('bk_courses');
+      if (storedLocal) {
+        const parsed = JSON.parse(storedLocal);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((c: Course) => {
+            if (c && c.id && !deletedSet.has(c.id)) {
+              const existing = map.get(c.id);
+              map.set(c.id, existing ? { ...existing, ...c } : c);
+            }
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   if (Array.isArray(incomingCourses)) {
@@ -117,13 +132,61 @@ function mergeStudentsWithPreloaded(incomingStudents: Student[]): Student[] {
 }
 
 function mergeGradesWithPreloaded(incomingGrades: Record<string, GradeBreakdown>): Record<string, GradeBreakdown> {
-  const merged = { ...incomingGrades };
+  const merged: Record<string, GradeBreakdown> = {};
+  
+  // 1. Initial sample grades for first-time preview
   const sample = generateInitialSampleGrades(PRELOADED_STUDENTS, PRELOADED_COURSES);
   Object.keys(sample).forEach((k) => {
-    if (!merged[k]) {
-      merged[k] = sample[k];
-    }
+    merged[k] = sample[k];
   });
+
+  // 2. Overlay incoming remote grades
+  if (incomingGrades && typeof incomingGrades === 'object') {
+    Object.keys(incomingGrades).forEach((k) => {
+      if (incomingGrades[k]) {
+        merged[k] = incomingGrades[k];
+      }
+    });
+  }
+
+  // 3. CRITICAL: Preserve any actual scores already stored locally in localStorage
+  // This prevents outdated remote snapshots or temporary disconnections from wiping user-entered grades!
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('bk_grades');
+      if (stored) {
+        const local = JSON.parse(stored);
+        if (local && typeof local === 'object') {
+          Object.keys(local).forEach((k) => {
+            const locItem = local[k];
+            const currItem = merged[k];
+            if (!currItem) {
+              merged[k] = locItem;
+            } else if (locItem) {
+              const locHasScore =
+                typeof locItem.customTotal === 'number' ||
+                Boolean(locItem.customLetter) ||
+                (locItem.p1 || 0) + (locItem.p2 || 0) + (locItem.mid || 0) + (locItem.final || 0) + (locItem.att || 0) > 0 ||
+                (locItem.scores && Object.values(locItem.scores).some((v) => Number(v) > 0));
+
+              const currHasScore =
+                typeof currItem.customTotal === 'number' ||
+                Boolean(currItem.customLetter) ||
+                (currItem.p1 || 0) + (currItem.p2 || 0) + (currItem.mid || 0) + (currItem.final || 0) + (currItem.att || 0) > 0 ||
+                (currItem.scores && Object.values(currItem.scores).some((v) => Number(v) > 0));
+
+              if (locHasScore && !currHasScore) {
+                merged[k] = locItem;
+              } else if (locHasScore && currHasScore) {
+                merged[k] = { ...currItem, ...locItem };
+              }
+            }
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
   if (!merged['dip_201927_dip_c2_2019_1']) {
     merged['dip_201927_dip_c2_2019_1'] = { p1: 29, p2: 14, mid: 38, final: 15, att: 0 };
   }
@@ -498,7 +561,13 @@ export default function App() {
               }
             }
             if (remoteState.teachers) setTeachers(remoteState.teachers);
-            if (remoteState.courses) setCourses(remoteState.courses);
+            if (remoteState.courses) {
+              const merged = mergeCoursesWithPreloaded(remoteState.courses);
+              setCourses(merged);
+              if (merged.length > remoteState.courses.length) {
+                syncCoursesToFirestore(merged);
+              }
+            }
             if (remoteState.grades) {
               const merged = mergeGradesWithPreloaded(remoteState.grades);
               setGrades(merged);
@@ -510,7 +579,11 @@ export default function App() {
               setUserPasswords(merged);
               syncPasswordsToFirestore(merged);
             }
-            if (remoteState.availableYears) setAvailableYears(remoteState.availableYears);
+            if (remoteState.availableYears) {
+              const combined = Array.from(new Set([...DEFAULT_ACADEMIC_YEARS, ...remoteState.availableYears]));
+              combined.sort((a, b) => parseInt(a) - parseInt(b));
+              setAvailableYears(combined);
+            }
             if (typeof remoteState.systemLocked === 'boolean') setSystemLocked(remoteState.systemLocked);
             if (typeof remoteState.gradePublished === 'boolean') setGradePublished(remoteState.gradePublished);
             if (remoteState.currentYear) setCurrentYear(remoteState.currentYear);

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Award,
   GraduationCap,
@@ -151,9 +151,50 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
   const [localGradingGrades, setLocalGradingGrades] = useState<Record<string, GradeBreakdown>>({});
   const [isPdfGradeReportOpen, setIsPdfGradeReportOpen] = useState(false);
   const [isExcelUploadOpen, setIsExcelUploadOpen] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Sync local grading matrix when course or period changes
+  const unsavedRef = useRef(false);
+  const currentMatrixRef = useRef<Record<string, GradeBreakdown>>({});
+  const prevCourseIdRef = useRef(selectedGradCourseId);
+  const prevYearRef = useRef(gradingYear);
+  const prevSemRef = useRef(gradingSemester);
+
+  // Keep matrix ref in sync
+  currentMatrixRef.current = localGradingGrades;
+
+  // Sync local grading matrix when course or period changes (with auto-save for unsaved changes)
   useEffect(() => {
+    // If the user had typed unsaved grades on the PREVIOUS course/semester, auto-save them now so they don't vanish!
+    if (unsavedRef.current && prevCourseIdRef.current && onSaveGrades) {
+      const prevCId = prevCourseIdRef.current;
+      const prevYr = prevYearRef.current;
+      const prevSm = prevSemRef.current;
+      const prevMatrix = currentMatrixRef.current;
+
+      const updated = { ...grades };
+      diploma2018Students.forEach((s) => {
+        const keyByUid = getGradeKey(s.uid, prevCId, prevYr, prevSm);
+        const scoreVal = prevMatrix[s.uid] || { p1: 0, p2: 0, mid: 0, final: 0, att: 0 };
+        updated[keyByUid] = scoreVal;
+        if (s.id) {
+          const keyById = getGradeKey(s.id, prevCId, prevYr, prevSm);
+          updated[keyById] = scoreVal;
+        }
+      });
+      onSaveGrades(updated);
+      try {
+        const stored = localStorage.getItem('bk_grades');
+        const curr = stored ? JSON.parse(stored) : {};
+        localStorage.setItem('bk_grades', JSON.stringify({ ...curr, ...updated }));
+      } catch (_) {}
+      unsavedRef.current = false;
+      setHasUnsavedChanges(false);
+    }
+
+    prevCourseIdRef.current = selectedGradCourse?.id || '';
+    prevYearRef.current = gradingYear;
+    prevSemRef.current = gradingSemester;
+
     if (!selectedGradCourse) return;
     const initial: Record<string, GradeBreakdown> = {};
     diploma2018Students.forEach((s) => {
@@ -168,7 +209,9 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
       initial[s.uid] = { ...g };
     });
     setLocalGradingGrades(initial);
-  }, [selectedGradCourse?.id, gradingYear, gradingSemester, diploma2018Students.length, grades]);
+    unsavedRef.current = false;
+    setHasUnsavedChanges(false);
+  }, [selectedGradCourse?.id, gradingYear, gradingSemester, diploma2018Students.length]);
 
   // Add/Edit Course Modal State for 2018 Historical Courses
   const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
@@ -570,6 +613,8 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
     maxVal: number
   ) => {
     const parsed = val.trim() === '' ? 0 : Math.min(maxVal, Math.max(0, parseFloat(val) || 0));
+    setHasUnsavedChanges(true);
+    unsavedRef.current = true;
     setLocalGradingGrades((prev) => {
       const current = prev[studentUid] || { p1: 0, p2: 0, mid: 0, final: 0, att: 0 };
       const currentScores = current.scores ? { ...current.scores } : {};
@@ -592,6 +637,8 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
 
   // Handle Direct Custom Total Override (ድምር 100%)
   const handleCustomTotalChange = (studentUid: string, val: string) => {
+    setHasUnsavedChanges(true);
+    unsavedRef.current = true;
     setLocalGradingGrades((prev) => {
       const current = prev[studentUid] || { p1: 0, p2: 0, mid: 0, final: 0, att: 0 };
       if (val.trim() === '') {
@@ -611,6 +658,8 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
 
   // Handle Direct Custom Letter Override (ደረጃ A+, A, B, ወዘተ)
   const handleCustomLetterChange = (studentUid: string, val: string) => {
+    setHasUnsavedChanges(true);
+    unsavedRef.current = true;
     setLocalGradingGrades((prev) => {
       const current = prev[studentUid] || { p1: 0, p2: 0, mid: 0, final: 0, att: 0 };
       if (!val || val === '—') {
@@ -641,6 +690,13 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
       }
     });
     onSaveGrades(updated);
+    try {
+      const stored = localStorage.getItem('bk_grades');
+      const curr = stored ? JSON.parse(stored) : {};
+      localStorage.setItem('bk_grades', JSON.stringify({ ...curr, ...updated }));
+    } catch (_) {}
+    setHasUnsavedChanges(false);
+    unsavedRef.current = false;
     showNotify(
       `የተመራቂ ተማሪዎች የ${gradingYear} ዓ.ም ${gradingSemester}ኛ ሴሚስተር የ«${selectedGradCourse.name}» ውጤት በስኬት ተመዝግቧል!`,
       'success'
@@ -1620,6 +1676,38 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
                       })}
                     </tbody>
                   </table>
+                </div>
+
+                {/* Bottom Save & Status Bar */}
+                <div className="bg-slate-900 text-white p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-3 shadow-md mt-2">
+                  <div className="flex items-center gap-2.5">
+                    {hasUnsavedChanges ? (
+                      <span className="flex items-center gap-2 text-amber-300 text-xs font-bold animate-pulse">
+                        <AlertCircle className="w-4 h-4 text-amber-400" />
+                        <span>ያልተመዘገቡ አዳዲስ ውጤቶች አሉ! እባክዎ «ለውጦችን መዝግብ» የሚለውን ይጫኑ።</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>ሁሉም ውጤቶች በስኬት ተመዝግበዋል! ({gradingYear} ዓ.ም — {gradingSemester}ኛ ሴሚስተር | {selectedGradCourse.name})</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <button
+                      type="button"
+                      onClick={handleSaveGradingScores}
+                      className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm ${
+                        hasUnsavedChanges
+                          ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-black shadow-amber-500/20'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      }`}
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>{hasUnsavedChanges ? 'ለውጦችን አሁን መዝግብ (Save Now)' : 'ውጤቶችን መዝግብ (Saved)'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             );

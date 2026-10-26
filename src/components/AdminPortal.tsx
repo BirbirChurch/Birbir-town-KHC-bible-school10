@@ -265,6 +265,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       updated[key] = adminLocalGrades[s.uid] || { p1: 0, p2: 0, mid: 0, final: 0, att: 0 };
     });
     onSaveGrades(updated);
+    try {
+      const stored = localStorage.getItem('bk_grades');
+      const curr = stored ? JSON.parse(stored) : {};
+      localStorage.setItem('bk_grades', JSON.stringify({ ...curr, ...updated }));
+    } catch (_) {}
     showNotify?.('የተስተካከሉት ውጤቶች በስኬት ተመዝግበዋል!', 'success');
   };
 
