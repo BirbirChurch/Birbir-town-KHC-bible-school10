@@ -194,4 +194,42 @@ export const loadPersistentChurchLogo = async (): Promise<string> => {
   return getStoredChurchLogo();
 };
 
+export const loadPersistentOfficialConfig = async (): Promise<any | null> => {
+  if (typeof window === 'undefined') return null;
+  try {
+    if (window.indexedDB) {
+      const raw = await new Promise<string | null>((resolve) => {
+        try {
+          const req = indexedDB.open('BirbirKHC_Storage', 1);
+          req.onupgradeneeded = (e: any) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('branding_assets')) {
+              db.createObjectStore('branding_assets');
+            }
+          };
+          req.onsuccess = () => {
+            try {
+              const db = req.result;
+              const tx = db.transaction('branding_assets', 'readonly');
+              const store = tx.objectStore('branding_assets');
+              const getReq = store.get('bk_official_config');
+              getReq.onsuccess = () => resolve(getReq.result || null);
+              getReq.onerror = () => resolve(null);
+            } catch {
+              resolve(null);
+            }
+          };
+          req.onerror = () => resolve(null);
+        } catch {
+          resolve(null);
+        }
+      });
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    }
+  } catch (_) {}
+  return null;
+};
+
 export const CHURCH_LOGO = DEFAULT_CHURCH_LOGO;

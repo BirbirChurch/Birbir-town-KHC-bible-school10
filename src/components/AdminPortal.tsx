@@ -55,6 +55,8 @@ import { GraduationManager } from './GraduationManager.tsx';
 import { MasterGradeReportPdfModal } from './MasterGradeReportPdfModal.tsx';
 import { AdminAnalytics } from './AdminAnalytics.tsx';
 import { compressImage } from '../utils/imageCompressor.ts';
+import { isSampleCourse } from './SampleCoursesModal.tsx';
+import { TeacherAllocationManager } from './TeacherAllocationManager.tsx';
 
 interface AdminPortalProps {
   systemLocked: boolean;
@@ -101,6 +103,12 @@ interface AdminPortalProps {
   studentPdfPrintAllowed?: boolean;
   onToggleStudentPdfPrint?: () => void;
   onSaveCourses?: (updatedCourses: Course[]) => void;
+  onOpenAddCourse?: () => void;
+  onOpenEditCourse?: (course: Course) => void;
+  onDeleteCourse?: (courseId: string) => void;
+  onOpenSampleCoursesModal?: () => void;
+  onQuickAssignTeacher?: (courseId: string, newTeacher: string) => void;
+  onBatchDeleteCourses?: (courseIds: string[]) => void;
 }
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({
@@ -147,7 +155,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onAddAcademicYear,
   availableYears = ['2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027', '2028', '2029', '2030'],
   onUpdateStudents,
-  onSaveCourses
+  onSaveCourses,
+  onOpenAddCourse,
+  onOpenEditCourse,
+  onDeleteCourse,
+  onOpenSampleCoursesModal,
+  onQuickAssignTeacher,
+  onBatchDeleteCourses
 }) => {
   const [adminTab, setAdminTab] = useState<'security' | 'academic_calendar' | 'teachers' | 'courses' | 'students' | 'graduation' | 'analytics' | 'official_signatures'>('security');
   const [teacherSearchTerm, setTeacherSearchTerm] = useState('');
@@ -256,6 +270,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       updated[key] = adminLocalGrades[s.uid] || { p1: 0, p2: 0, mid: 0, final: 0, att: 0 };
     });
     onSaveGrades(updated);
+    try {
+      const stored = localStorage.getItem('bk_grades');
+      const curr = stored ? JSON.parse(stored) : {};
+      localStorage.setItem('bk_grades', JSON.stringify({ ...curr, ...updated }));
+    } catch (_) {}
     showNotify?.('የተስተካከሉት ውጤቶች በስኬት ተመዝግበዋል!', 'success');
   };
 
@@ -811,6 +830,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           onSaveCourses={onSaveCourses}
           showNotify={showNotify || (() => {})}
           teachers={teachers}
+          onDeleteCourse={onDeleteCourse}
+          onOpenSampleCoursesModal={onOpenSampleCoursesModal}
         />
       )}
 
@@ -1426,52 +1447,30 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
       {/* TAB 2: Courses */}
       {adminTab === 'courses' && (
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200/80 p-6 space-y-4">
-          <div className="flex justify-between items-center border-b pb-3">
-            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-indigo-700" />
-              <span>የኮርሶች የቀን ሰሌዳና የመምህራን ድልድል ({courses.length})</span>
-            </h3>
-            <button
-              onClick={() => onSwitchView('DEAN')}
-              className="text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3 py-1.5 rounded-xl cursor-pointer"
-            >
-              በዋና ዲን ገጽ አስተዳድር
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-600">
-              <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-[11px]">
-                <tr>
-                  <th className="p-3">ተ.ቁ</th>
-                  <th className="p-3">ፕሮግራም</th>
-                  <th className="p-3">ቀን / ሰሌዳ</th>
-                  <th className="p-3">የኮርስ ስም</th>
-                  <th className="p-3">የተመደበ መምህር</th>
-                  <th className="p-3 text-center">ክሬዲት</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {courses.map((c, idx) => (
-                  <tr key={c.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-mono text-slate-400">{idx + 1}</td>
-                    <td className="p-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        c.program === 'Degree' ? 'bg-indigo-100 text-indigo-800' : 'bg-emerald-100 text-emerald-800'
-                      }`}>
-                        {c.program}
-                      </span>
-                    </td>
-                    <td className="p-3 font-semibold text-amber-900 bg-amber-50/50 rounded">{c.schedule}</td>
-                    <td className="p-3 font-bold text-slate-900">{c.name}</td>
-                    <td className="p-3 font-semibold text-slate-700">{c.teacher}</td>
-                    <td className="p-3 text-center font-mono font-bold text-amber-700">{c.credits}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div className="space-y-6">
+          <TeacherAllocationManager
+            courses={courses}
+            teachers={teachers}
+            onUpdateCourseTeacher={(courseId, newTeacher) => {
+              if (onQuickAssignTeacher) {
+                onQuickAssignTeacher(courseId, newTeacher);
+              } else if (onSaveCourses) {
+                const updated = courses.map((c) => (c.id === courseId ? { ...c, teacher: newTeacher } : c));
+                onSaveCourses(updated);
+                showNotify?.(newTeacher === 'አልተመደበም (—)' ? 'የመምህር ምደባ ተነስቷል!' : `መምህር ${newTeacher} ተመድቧል!`, 'success');
+              }
+            }}
+            onOpenAddCourse={onOpenAddCourse || (() => {})}
+            onOpenEditCourse={onOpenEditCourse || (() => {})}
+            onDeleteCourse={onDeleteCourse || (() => {})}
+            onBatchDeleteCourses={onBatchDeleteCourses}
+            onDownloadCourseGrades={handleExportAdminCourseExcel}
+            showNotify={showNotify || (() => {})}
+            currentYear={currentYear}
+            currentSemester={currentSemester}
+            availableYears={availableYears}
+            allowEditDelete={true}
+          />
 
           {/* Integrated Course Grade Supervision with Excel Upload, Download & PDF */}
           <div className="pt-6 border-t border-slate-200 space-y-4">

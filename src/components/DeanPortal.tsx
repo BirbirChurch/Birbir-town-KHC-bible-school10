@@ -32,6 +32,7 @@ import { CourseGradeReportPdfModal } from './CourseGradeReportPdfModal.tsx';
 import { exportCourseGradesToExcel, downloadCourseGradeTemplateExcel, exportMasterSemesterGradeSheetToExcel } from '../utils/excelUtils.ts';
 import { GraduationManager } from './GraduationManager.tsx';
 import { MasterGradeReportPdfModal } from './MasterGradeReportPdfModal.tsx';
+import { TeacherAllocationManager } from './TeacherAllocationManager.tsx';
 
 interface DeanPortalProps {
   currentYear: string;
@@ -65,7 +66,10 @@ interface DeanPortalProps {
   churchLogo?: string;
   onUpdateStudents?: (updated: Student[]) => void;
   onSaveCourses?: (updatedCourses: Course[]) => void;
+  onQuickAssignTeacher?: (courseId: string, newTeacher: string) => void;
+  onBatchDeleteCourses?: (courseIds: string[]) => void;
 }
+
 
 export const DeanPortal: React.FC<DeanPortalProps> = ({
   currentYear,
@@ -561,124 +565,30 @@ export const DeanPortal: React.FC<DeanPortalProps> = ({
 
       {/* TAB 1: Course Allocations & Schedule */}
       {activeTab === 'courses' && (
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200/80 p-6 space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <div className="flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-emerald-800" />
-              <h3 className="text-base font-bold text-slate-800">
-                የኮርስ ድልድል፣ መምህራን እና የቀን ሰሌዳ ({filteredCourses.length})
-              </h3>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2.5">
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
-                <button
-                  onClick={() => setCourseProgramFilter('ALL')}
-                  className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                    courseProgramFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  ሁሉም ({courses.length})
-                </button>
-                <button
-                  onClick={() => setCourseProgramFilter('Degree')}
-                  className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                    courseProgramFilter === 'Degree' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  ድግሪ ({courses.filter(c => c.program === 'Degree').length})
-                </button>
-                <button
-                  onClick={() => setCourseProgramFilter('Diploma')}
-                  className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                    courseProgramFilter === 'Diploma' ? 'bg-emerald-700 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  ዲፕሎማ ({courses.filter(c => c.program === 'Diploma').length})
-                </button>
-              </div>
-
-              <button
-                onClick={onOpenAddCourse}
-                className="bg-emerald-800 hover:bg-emerald-900 text-white text-xs px-3.5 py-2 rounded-xl font-bold shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>አዲስ የትምህርት ዓይነት ጨምር</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-600">
-              <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-[11px] rounded-lg">
-                <tr>
-                  <th className="p-3">ተ/ቁ</th>
-                  <th className="p-3">ፕሮግራም</th>
-                  <th className="p-3">ቀን / የጊዜ ሰሌዳ</th>
-                  <th className="p-3">የኮርስ ዓይነት</th>
-                  <th className="p-3">የተመደበ መምህር</th>
-                  <th className="p-3 text-center">ክሬዲት</th>
-                  <th className="p-3 text-right">ተግባር</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredCourses.map((c, idx) => (
-                  <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="p-3 font-mono font-bold text-slate-400">{idx + 1}</td>
-                    <td className="p-3 font-semibold">
-                      <span
-                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold ${
-                          c.program === 'Degree'
-                            ? 'bg-indigo-100 text-indigo-800'
-                            : 'bg-emerald-100 text-emerald-800'
-                        }`}
-                      >
-                        {c.program === 'Degree' ? 'ድግሪ' : 'ዲፕሎማ'}
-                      </span>
-                    </td>
-                    <td className="p-3 font-semibold text-amber-900 bg-amber-50/40 rounded">
-                      {c.schedule || 'አልተወሰነም'}
-                    </td>
-                    <td className="p-3 font-bold text-slate-800">{c.name}</td>
-                    <td className="p-3 font-semibold text-slate-700">
-                      {c.teacher === 'አልተመደበም (—)' ? (
-                        <span className="text-slate-400 italic">አልተመደበም (—)</span>
-                      ) : (
-                        c.teacher
-                      )}
-                    </td>
-                    <td className="p-3 text-center font-black text-amber-700 font-mono text-sm">
-                      {c.credits}
-                    </td>
-                    <td className="p-3 text-right space-x-1 space-x-reverse">
-                      <button
-                        onClick={() => handleDownloadCourseGrades(c)}
-                        className="p-1.5 rounded-lg text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 transition-colors cursor-pointer"
-                        title="ውጤት አውርድ (CSV)"
-                      >
-                        <Download className="w-4 h-4 inline" />
-                      </button>
-                      <button
-                        onClick={() => onOpenEditCourse(c)}
-                        className="p-1.5 rounded-lg text-blue-600 hover:text-blue-800 hover:bg-blue-50 transition-colors cursor-pointer"
-                        title="አስተካክል"
-                      >
-                        <Edit className="w-4 h-4 inline" />
-                      </button>
-                      <button
-                        onClick={() => onDeleteCourse(c.id)}
-                        className="p-1.5 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 transition-colors cursor-pointer"
-                        title="ሰርዝ"
-                      >
-                        <Trash2 className="w-4 h-4 inline" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <TeacherAllocationManager
+          courses={courses}
+          teachers={teachers}
+          onUpdateCourseTeacher={(courseId, newTeacher) => {
+            if (onQuickAssignTeacher) {
+              onQuickAssignTeacher(courseId, newTeacher);
+            } else if (onSaveCourses) {
+              const updated = courses.map((c) => (c.id === courseId ? { ...c, teacher: newTeacher } : c));
+              onSaveCourses(updated);
+              showNotify(newTeacher === 'አልተመደበም (—)' ? 'የመምህር ምደባ ተነስቷል!' : `መምህር ${newTeacher} ተመድቧል!`, 'success');
+            }
+          }}
+          onOpenAddCourse={onOpenAddCourse}
+          onOpenEditCourse={onOpenEditCourse}
+          onDeleteCourse={onDeleteCourse}
+          onBatchDeleteCourses={onBatchDeleteCourses}
+          onOpenAddTeacher={() => setShowAddTeacherModal(true)}
+          onDownloadCourseGrades={handleDownloadCourseGrades}
+          showNotify={showNotify}
+          currentYear={currentYear}
+          currentSemester={currentSemester}
+          availableYears={availableYears}
+          allowEditDelete={true}
+        />
       )}
 
       {/* TAB 2: Grade Supervision, Editing & Approval */}

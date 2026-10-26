@@ -58,47 +58,22 @@ const DEFAULT_ACADEMIC_YEARS = [
 ];
 
 function mergeCoursesWithPreloaded(incomingCourses: Course[]): Course[] {
-  const map = new Map<string, Course>();
-
-  PRELOADED_COURSES.forEach((c) => {
-    map.set(c.id, c);
-  });
-
-  const hist2018 = getInitial2018HistoricalCourses();
-  hist2018.forEach((c) => {
-    if (!map.has(c.id)) {
+  if (!Array.isArray(incomingCourses) || incomingCourses.length === 0) {
+    const map = new Map<string, Course>();
+    PRELOADED_COURSES.forEach((c) => {
       map.set(c.id, c);
-    }
-  });
-
-  if (typeof window !== 'undefined') {
-    try {
-      const storedHist = localStorage.getItem('bk_historical_2018_courses');
-      if (storedHist) {
-        const parsed = JSON.parse(storedHist);
-        if (Array.isArray(parsed)) {
-          parsed.forEach((c: Course) => {
-            if (c && c.id) {
-              const existing = map.get(c.id);
-              map.set(c.id, existing ? { ...existing, ...c } : c);
-            }
-          });
-        }
-      }
-    } catch (_) {}
-  }
-
-  if (Array.isArray(incomingCourses)) {
-    incomingCourses.forEach((c) => {
-      if (c && c.id) {
-        const existing = map.get(c.id);
-        map.set(c.id, existing ? { ...existing, ...c } : c);
+    });
+    const hist2018 = getInitial2018HistoricalCourses();
+    hist2018.forEach((c) => {
+      if (!map.has(c.id)) {
+        map.set(c.id, c);
       }
     });
+    return Array.from(map.values());
   }
-
-  return Array.from(map.values());
+  return incomingCourses;
 }
+
 
 function mergeStudentsWithPreloaded(incomingStudents: Student[]): Student[] {
   if (!Array.isArray(incomingStudents)) return sortStudentsByAmharicName(PRELOADED_STUDENTS);
@@ -1051,48 +1026,78 @@ export default function App() {
 
   // Batch Course save (used by GraduationManager, etc.)
   const handleSaveCoursesBatch = (incomingUpdatedCourses: Course[]) => {
-    const merged = mergeCoursesWithPreloaded(incomingUpdatedCourses);
-    setCourses(merged);
+    setCourses(incomingUpdatedCourses);
     try {
-      localStorage.setItem('bk_courses', JSON.stringify(merged));
+      localStorage.setItem('bk_courses', JSON.stringify(incomingUpdatedCourses));
     } catch (_) {}
-    syncCoursesToFirestore(merged);
+    syncCoursesToFirestore(incomingUpdatedCourses);
   };
 
-  // Course save
+  // Quick 1-click teacher assignment to a course
+  const handleQuickAssignTeacher = (courseId: string, newTeacher: string) => {
+    const course = courses.find((c) => c.id === courseId);
+    const updated = courses.map((c) => (c.id === courseId ? { ...c, teacher: newTeacher } : c));
+    setCourses(updated);
+    try {
+      localStorage.setItem('bk_courses', JSON.stringify(updated));
+    } catch (_) {}
+    syncCoursesToFirestore(updated);
+
+    if (newTeacher === 'አልተመደበም (—)') {
+      showNotification(`የ"${course?.name || 'ኮርስ'}" መምህር ምደባ ተነስቷል (ክፍት ሆኗል)!`, 'info');
+    } else {
+      showNotification(`ለ"${course?.name || 'ኮርስ'}" መምህር ${newTeacher} በስኬት ተመድቧል!`, 'success');
+    }
+  };
+
+  // Course save (add or edit)
   const handleSaveCourse = (courseData: Omit<Course, 'id'> & { id?: string }) => {
+    let updated: Course[];
     if (courseData.id) {
-      setCourses((prev) => {
-        const updated = prev.map((c) => (c.id === courseData.id ? { ...c, ...courseData, id: c.id } : c));
-        handleSaveCoursesBatch(updated);
-        return updated;
-      });
+      updated = courses.map((c) => (c.id === courseData.id ? { ...c, ...courseData, id: c.id } : c));
+      setCourses(updated);
       showNotification('የኮርሱ መረጃ በስኬት ተስተካክሏል!', 'success');
     } else {
       const newCourse: Course = {
         ...courseData,
         id: `c_${Date.now()}`
       };
-      setCourses((prev) => {
-        const updated = [...prev, newCourse];
-        handleSaveCoursesBatch(updated);
-        return updated;
-      });
+      updated = [...courses, newCourse];
+      setCourses(updated);
       showNotification('አዲስ የትምህርት ዓይነት በስኬት ተጨምሯል!', 'success');
     }
+    try {
+      localStorage.setItem('bk_courses', JSON.stringify(updated));
+    } catch (_) {}
+    syncCoursesToFirestore(updated);
     setCourseModalData({ isOpen: false, course: null });
   };
 
   const handleDeleteCourse = (courseId: string) => {
-    if (window.confirm('እርግጠኛ ነዎት ይህንን ኮርስ ማሰረዝ ይፈልጋሉ?')) {
-      setCourses((prev) => {
-        const updated = prev.filter((c) => c.id !== courseId);
-        handleSaveCoursesBatch(updated);
-        return updated;
-      });
+    const toDelete = courses.find((c) => c.id === courseId);
+    if (window.confirm(`እርግጠኛ ነዎት "${toDelete?.name || 'ይህን ኮርስ'}" ማሰረዝ ይፈልጋሉ?`)) {
+      const updated = courses.filter((c) => c.id !== courseId);
+      setCourses(updated);
+      try {
+        localStorage.setItem('bk_courses', JSON.stringify(updated));
+      } catch (_) {}
+      syncCoursesToFirestore(updated);
       showNotification('ኮርሱ ተሰርዟል!', 'info');
     }
   };
+
+  const handleBatchDeleteCourses = (courseIds: string[]) => {
+    if (!courseIds || courseIds.length === 0) return;
+    const updated = courses.filter((c) => !courseIds.includes(c.id));
+    setCourses(updated);
+    try {
+      localStorage.setItem('bk_courses', JSON.stringify(updated));
+    } catch (_) {}
+    syncCoursesToFirestore(updated);
+    showNotification(`${courseIds.length} ኮርሶች በጥቅል ከሲስተሙ ተሰርዘዋል!`, 'info');
+  };
+
+
 
   // Student save
   const handleSaveStudent = (newStudent: Student) => {
@@ -1329,6 +1334,11 @@ export default function App() {
                 onOpenReleaseManager={() => setIsReleaseManagerOpen(true)}
                 onOpenArchiveModal={() => setIsArchiveModalOpen(true)}
                 onSaveCourses={handleSaveCoursesBatch}
+                onQuickAssignTeacher={handleQuickAssignTeacher}
+                onOpenAddCourse={() => setCourseModalData({ isOpen: true, course: null })}
+                onOpenEditCourse={(c) => setCourseModalData({ isOpen: true, course: c })}
+                onDeleteCourse={handleDeleteCourse}
+                onBatchDeleteCourses={handleBatchDeleteCourses}
               />
             )}
 
@@ -1358,6 +1368,7 @@ export default function App() {
                 onOpenAddCourse={() => setCourseModalData({ isOpen: true, course: null })}
                 onOpenEditCourse={(c) => setCourseModalData({ isOpen: true, course: c })}
                 onDeleteCourse={handleDeleteCourse}
+                onBatchDeleteCourses={handleBatchDeleteCourses}
                 onOpenAddStudent={() => setIsStudentModalOpen(true)}
                 onDeleteStudent={handleDeleteStudent}
                 onSaveGrades={(updated) => setGrades(updated)}
@@ -1369,6 +1380,7 @@ export default function App() {
                 churchLogo={churchLogo}
                 onUpdateStudents={(updated) => setStudents(updated)}
                 onSaveCourses={handleSaveCoursesBatch}
+                onQuickAssignTeacher={handleQuickAssignTeacher}
               />
             )}
 

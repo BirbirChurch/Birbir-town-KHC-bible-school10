@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Award,
   GraduationCap,
@@ -69,6 +69,8 @@ interface GraduationManagerProps {
   onSaveGrades?: (updatedGrades: Record<string, GradeBreakdown>) => void;
   onSaveCourses?: (updatedCourses: Course[]) => void;
   teachers?: string[];
+  onDeleteCourse?: (courseId: string) => void;
+  onOpenSampleCoursesModal?: () => void;
 }
 
 export const GraduationManager: React.FC<GraduationManagerProps> = ({
@@ -85,7 +87,9 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
   showNotify,
   onSaveGrades,
   onSaveCourses,
-  teachers = PRELOADED_TEACHERS
+  teachers = PRELOADED_TEACHERS,
+  onDeleteCourse,
+  onOpenSampleCoursesModal
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'verification' | 'graduates_grading' | 'archive'>('graduates_grading');
   const [searchTerm, setSearchTerm] = useState('');
@@ -147,9 +151,50 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
   const [localGradingGrades, setLocalGradingGrades] = useState<Record<string, GradeBreakdown>>({});
   const [isPdfGradeReportOpen, setIsPdfGradeReportOpen] = useState(false);
   const [isExcelUploadOpen, setIsExcelUploadOpen] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Sync local grading matrix when course or period changes
+  const unsavedRef = useRef(false);
+  const currentMatrixRef = useRef<Record<string, GradeBreakdown>>({});
+  const prevCourseIdRef = useRef(selectedGradCourseId);
+  const prevYearRef = useRef(gradingYear);
+  const prevSemRef = useRef(gradingSemester);
+
+  // Keep matrix ref in sync
+  currentMatrixRef.current = localGradingGrades;
+
+  // Sync local grading matrix when course or period changes (with auto-save for unsaved changes)
   useEffect(() => {
+    // If the user had typed unsaved grades on the PREVIOUS course/semester, auto-save them now so they don't vanish!
+    if (unsavedRef.current && prevCourseIdRef.current && onSaveGrades) {
+      const prevCId = prevCourseIdRef.current;
+      const prevYr = prevYearRef.current;
+      const prevSm = prevSemRef.current;
+      const prevMatrix = currentMatrixRef.current;
+
+      const updated = { ...grades };
+      diploma2018Students.forEach((s) => {
+        const keyByUid = getGradeKey(s.uid, prevCId, prevYr, prevSm);
+        const scoreVal = prevMatrix[s.uid] || { p1: 0, p2: 0, mid: 0, final: 0, att: 0 };
+        updated[keyByUid] = scoreVal;
+        if (s.id) {
+          const keyById = getGradeKey(s.id, prevCId, prevYr, prevSm);
+          updated[keyById] = scoreVal;
+        }
+      });
+      onSaveGrades(updated);
+      try {
+        const stored = localStorage.getItem('bk_grades');
+        const curr = stored ? JSON.parse(stored) : {};
+        localStorage.setItem('bk_grades', JSON.stringify({ ...curr, ...updated }));
+      } catch (_) {}
+      unsavedRef.current = false;
+      setHasUnsavedChanges(false);
+    }
+
+    prevCourseIdRef.current = selectedGradCourse?.id || '';
+    prevYearRef.current = gradingYear;
+    prevSemRef.current = gradingSemester;
+
     if (!selectedGradCourse) return;
     const initial: Record<string, GradeBreakdown> = {};
     diploma2018Students.forEach((s) => {
@@ -164,7 +209,9 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
       initial[s.uid] = { ...g };
     });
     setLocalGradingGrades(initial);
-  }, [selectedGradCourse?.id, gradingYear, gradingSemester, diploma2018Students.length, grades]);
+    unsavedRef.current = false;
+    setHasUnsavedChanges(false);
+  }, [selectedGradCourse?.id, gradingYear, gradingSemester, diploma2018Students.length]);
 
   // Add/Edit Course Modal State for 2018 Historical Courses
   const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
@@ -418,15 +465,30 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
   };
 
   const handleDeleteHistoricalCourse = (courseId: string) => {
-    if (window.confirm('ይህን የ2018 የትምህርት ዓይነት ከዝርዝሩ ማሰረዝ ይፈልጋሉ?')) {
+    const targetCourse =
+      historical2018Courses.find((c) => c.id === courseId) ||
+      activeCoursesForGrading.find((c) => c.id === courseId) ||
+      courses.find((c) => c.id === courseId);
+    const courseName = targetCourse ? `«${targetCourse.name}»` : 'ይህንን የትምህርት ዓይነት';
+
+    if (window.confirm(`${courseName} የሚለውን የትምህርት ዓይነት ከሲስተሙ ማሰረዝ ይፈልጋሉ?`)) {
+      // Record permanently in deleted course IDs
+      try {
+        const storedDel = localStorage.getItem('bk_deleted_course_ids');
+        const currentDel = storedDel ? JSON.parse(storedDel) : [];
+        const updatedDel = Array.from(new Set([...currentDel, courseId]));
+        localStorage.setItem('bk_deleted_course_ids', JSON.stringify(updatedDel));
+      } catch (_) {}
+
       const updated = historical2018Courses.filter((c) => c.id !== courseId);
       setHistorical2018Courses(updated);
       saveHistorical2018Courses(updated);
+      onDeleteCourse?.(courseId);
       onSaveCourses?.(updated);
       if (selectedGradCourseId === courseId) {
         setSelectedGradCourseId(updated[0]?.id || '');
       }
-      showNotify('ኮርሱ ከ2018 ዝርዝር ተሰርዟል!', 'info');
+      showNotify(`${courseName} ከሲስተሙ ተሰርዟል!`, 'info');
     }
   };
 
@@ -551,6 +613,8 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
     maxVal: number
   ) => {
     const parsed = val.trim() === '' ? 0 : Math.min(maxVal, Math.max(0, parseFloat(val) || 0));
+    setHasUnsavedChanges(true);
+    unsavedRef.current = true;
     setLocalGradingGrades((prev) => {
       const current = prev[studentUid] || { p1: 0, p2: 0, mid: 0, final: 0, att: 0 };
       const currentScores = current.scores ? { ...current.scores } : {};
@@ -573,6 +637,8 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
 
   // Handle Direct Custom Total Override (ድምር 100%)
   const handleCustomTotalChange = (studentUid: string, val: string) => {
+    setHasUnsavedChanges(true);
+    unsavedRef.current = true;
     setLocalGradingGrades((prev) => {
       const current = prev[studentUid] || { p1: 0, p2: 0, mid: 0, final: 0, att: 0 };
       if (val.trim() === '') {
@@ -592,6 +658,8 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
 
   // Handle Direct Custom Letter Override (ደረጃ A+, A, B, ወዘተ)
   const handleCustomLetterChange = (studentUid: string, val: string) => {
+    setHasUnsavedChanges(true);
+    unsavedRef.current = true;
     setLocalGradingGrades((prev) => {
       const current = prev[studentUid] || { p1: 0, p2: 0, mid: 0, final: 0, att: 0 };
       if (!val || val === '—') {
@@ -622,6 +690,13 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
       }
     });
     onSaveGrades(updated);
+    try {
+      const stored = localStorage.getItem('bk_grades');
+      const curr = stored ? JSON.parse(stored) : {};
+      localStorage.setItem('bk_grades', JSON.stringify({ ...curr, ...updated }));
+    } catch (_) {}
+    setHasUnsavedChanges(false);
+    unsavedRef.current = false;
     showNotify(
       `የተመራቂ ተማሪዎች የ${gradingYear} ዓ.ም ${gradingSemester}ኛ ሴሚስተር የ«${selectedGradCourse.name}» ውጤት በስኬት ተመዝግቧል!`,
       'success'
@@ -1036,6 +1111,18 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
                 <span>+ አዲስ የ2018 ኮርስ ጨምር</span>
               </button>
 
+              {onOpenSampleCoursesModal && (
+                <button
+                  type="button"
+                  onClick={onOpenSampleCoursesModal}
+                  className="bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-300 text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="ሳንፈልጋቸው እንደ ናሙና የተሰሩ የትምህርት ዓይነቶችን መርጦ ለመደለት"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span>የናሙና ኮርሶች መደለቻ</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => setIsExcelUploadOpen(true)}
@@ -1188,16 +1275,15 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
                     <span>የኮርሱን መረጃ አሻሽል (Edit)</span>
                   </button>
 
-                  {gradingYear === '2018' && historical2018Courses.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteHistoricalCourse(selectedGradCourse.id)}
-                      className="bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs p-1.5 rounded-xl transition-all cursor-pointer"
-                      title="ኮርሱን ከ2018 ዝርዝር አስወግድ"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteHistoricalCourse(selectedGradCourse.id)}
+                    className="bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 text-xs px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    title="ይህንን ኮርስ ከሲስተሙ አስወግድ (Delete)"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>ይህንን ኮርስ ሰርዝ (Delete)</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -1590,6 +1676,38 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
                       })}
                     </tbody>
                   </table>
+                </div>
+
+                {/* Bottom Save & Status Bar */}
+                <div className="bg-slate-900 text-white p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-3 shadow-md mt-2">
+                  <div className="flex items-center gap-2.5">
+                    {hasUnsavedChanges ? (
+                      <span className="flex items-center gap-2 text-amber-300 text-xs font-bold animate-pulse">
+                        <AlertCircle className="w-4 h-4 text-amber-400" />
+                        <span>ያልተመዘገቡ አዳዲስ ውጤቶች አሉ! እባክዎ «ለውጦችን መዝግብ» የሚለውን ይጫኑ።</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>ሁሉም ውጤቶች በስኬት ተመዝግበዋል! ({gradingYear} ዓ.ም — {gradingSemester}ኛ ሴሚስተር | {selectedGradCourse.name})</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <button
+                      type="button"
+                      onClick={handleSaveGradingScores}
+                      className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm ${
+                        hasUnsavedChanges
+                          ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-black shadow-amber-500/20'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      }`}
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>{hasUnsavedChanges ? 'ለውጦችን አሁን መዝግብ (Save Now)' : 'ውጤቶችን መዝግብ (Saved)'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             );
