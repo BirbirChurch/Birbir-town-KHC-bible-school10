@@ -258,33 +258,19 @@ export function getInitial2018HistoricalCourses(): Course[] {
   return list;
 }
 
-export function getDeletedCourseIdsSet(): Set<string> {
-  if (typeof window !== 'undefined') {
-    try {
-      const stored = localStorage.getItem('bk_deleted_course_ids');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return new Set(parsed);
-      }
-    } catch (_) {}
-  }
-  return new Set();
-}
-
 export function loadHistorical2018Courses(): Course[] {
-  const deletedSet = getDeletedCourseIdsSet();
   if (typeof window !== 'undefined') {
     try {
       const stored = localStorage.getItem('bk_historical_2018_courses');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          return parsed.filter((c: Course) => c && c.id && !deletedSet.has(c.id));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
         }
       }
     } catch (_) {}
   }
-  return getInitial2018HistoricalCourses().filter((c) => !deletedSet.has(c.id));
+  return getInitial2018HistoricalCourses();
 }
 
 export function saveHistorical2018Courses(courseList: Course[]): void {
@@ -294,5 +280,4 @@ export function saveHistorical2018Courses(courseList: Course[]): void {
     } catch (_) {}
   }
 }
-
 

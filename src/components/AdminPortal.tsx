@@ -55,7 +55,6 @@ import { GraduationManager } from './GraduationManager.tsx';
 import { MasterGradeReportPdfModal } from './MasterGradeReportPdfModal.tsx';
 import { AdminAnalytics } from './AdminAnalytics.tsx';
 import { compressImage } from '../utils/imageCompressor.ts';
-import { isSampleCourse } from './SampleCoursesModal.tsx';
 
 interface AdminPortalProps {
   systemLocked: boolean;
@@ -102,10 +101,6 @@ interface AdminPortalProps {
   studentPdfPrintAllowed?: boolean;
   onToggleStudentPdfPrint?: () => void;
   onSaveCourses?: (updatedCourses: Course[]) => void;
-  onOpenAddCourse?: () => void;
-  onOpenEditCourse?: (course: Course) => void;
-  onDeleteCourse?: (courseId: string) => void;
-  onOpenSampleCoursesModal?: () => void;
 }
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({
@@ -152,11 +147,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onAddAcademicYear,
   availableYears = ['2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027', '2028', '2029', '2030'],
   onUpdateStudents,
-  onSaveCourses,
-  onOpenAddCourse,
-  onOpenEditCourse,
-  onDeleteCourse,
-  onOpenSampleCoursesModal
+  onSaveCourses
 }) => {
   const [adminTab, setAdminTab] = useState<'security' | 'academic_calendar' | 'teachers' | 'courses' | 'students' | 'graduation' | 'analytics' | 'official_signatures'>('security');
   const [teacherSearchTerm, setTeacherSearchTerm] = useState('');
@@ -265,11 +256,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       updated[key] = adminLocalGrades[s.uid] || { p1: 0, p2: 0, mid: 0, final: 0, att: 0 };
     });
     onSaveGrades(updated);
-    try {
-      const stored = localStorage.getItem('bk_grades');
-      const curr = stored ? JSON.parse(stored) : {};
-      localStorage.setItem('bk_grades', JSON.stringify({ ...curr, ...updated }));
-    } catch (_) {}
     showNotify?.('የተስተካከሉት ውጤቶች በስኬት ተመዝግበዋል!', 'success');
   };
 
@@ -825,8 +811,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           onSaveCourses={onSaveCourses}
           showNotify={showNotify || (() => {})}
           teachers={teachers}
-          onDeleteCourse={onDeleteCourse}
-          onOpenSampleCoursesModal={onOpenSampleCoursesModal}
         />
       )}
 
@@ -1443,48 +1427,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {/* TAB 2: Courses */}
       {adminTab === 'courses' && (
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200/80 p-6 space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-3">
-            <div>
-              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-indigo-700" />
-                <span>የኮርሶች የቀን ሰሌዳና የመምህራን ድልድል ({courses.length})</span>
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                የትምህርት ዓይነቶችን ማስተዳደር፣ አዲስ መመዝገብ፣ እና የማይፈለጉ የናሙና ኮርሶችን መደለት ይችላሉ።
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              {onOpenAddCourse && (
-                <button
-                  type="button"
-                  onClick={onOpenAddCourse}
-                  className="bg-emerald-800 hover:bg-emerald-900 text-white text-xs px-3.5 py-1.5 rounded-xl font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>+ አዲስ ኮርስ ጨምር</span>
-                </button>
-              )}
-
-              {onOpenSampleCoursesModal && (
-                <button
-                  type="button"
-                  onClick={onOpenSampleCoursesModal}
-                  className="bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 text-xs px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                  title="ሳንፈልጋቸው እንደ ናሙና የተሰሩ የትምህርት ዓይነቶችን ለመደለት"
-                >
-                  <Trash2 className="w-4 h-4 text-rose-600" />
-                  <span>የናሙና ኮርሶች መደለቻ</span>
-                </button>
-              )}
-
-              <button
-                onClick={() => onSwitchView('DEAN')}
-                className="text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3 py-1.5 rounded-xl cursor-pointer"
-              >
-                በዋና ዲን ገጽ አስተዳድር
-              </button>
-            </div>
+          <div className="flex justify-between items-center border-b pb-3">
+            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-indigo-700" />
+              <span>የኮርሶች የቀን ሰሌዳና የመምህራን ድልድል ({courses.length})</span>
+            </h3>
+            <button
+              onClick={() => onSwitchView('DEAN')}
+              className="text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3 py-1.5 rounded-xl cursor-pointer"
+            >
+              በዋና ዲን ገጽ አስተዳድር
+            </button>
           </div>
 
           <div className="overflow-x-auto">
@@ -1497,70 +1450,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <th className="p-3">የኮርስ ስም</th>
                   <th className="p-3">የተመደበ መምህር</th>
                   <th className="p-3 text-center">ክሬዲት</th>
-                  <th className="p-3 text-center">ሁኔታ</th>
-                  <th className="p-3 text-right">ተግባር</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {courses.map((c, idx) => {
-                  const isSample = isSampleCourse(c);
-                  return (
-                    <tr key={c.id} className="hover:bg-slate-50">
-                      <td className="p-3 font-mono text-slate-400 font-bold">{idx + 1}</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          c.program === 'Degree' ? 'bg-indigo-100 text-indigo-800' : 'bg-emerald-100 text-emerald-800'
-                        }`}>
-                          {c.program}
-                        </span>
-                      </td>
-                      <td className="p-3 font-semibold text-amber-900 bg-amber-50/50 rounded">{c.schedule || 'መደበኛ'}</td>
-                      <td className="p-3 font-bold text-slate-900">
-                        <span>{c.name}</span>
-                        {c.code && (
-                          <span className="ml-1.5 font-mono text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
-                            {c.code}
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3 font-semibold text-slate-700">{c.teacher}</td>
-                      <td className="p-3 text-center font-mono font-bold text-amber-700">{c.credits}</td>
-                      <td className="p-3 text-center">
-                        {isSample ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                            የናሙና ኮርስ
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
-                            የተፈጠረ ኮርስ
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3 text-right space-x-1.5 space-x-reverse whitespace-nowrap">
-                        {onOpenEditCourse && (
-                          <button
-                            type="button"
-                            onClick={() => onOpenEditCourse(c)}
-                            className="p-1.5 rounded-lg text-blue-600 hover:text-blue-800 hover:bg-blue-50 transition-colors cursor-pointer inline-flex items-center"
-                            title="ኮርሱን አስተካክል (Edit)"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                        )}
-                        {onDeleteCourse && (
-                          <button
-                            type="button"
-                            onClick={() => onDeleteCourse(c.id)}
-                            className="p-1.5 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 transition-colors cursor-pointer inline-flex items-center"
-                            title="ኮርሱን ከሲስተሙ ደምስስ (Delete)"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {courses.map((c, idx) => (
+                  <tr key={c.id} className="hover:bg-slate-50">
+                    <td className="p-3 font-mono text-slate-400">{idx + 1}</td>
+                    <td className="p-3">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        c.program === 'Degree' ? 'bg-indigo-100 text-indigo-800' : 'bg-emerald-100 text-emerald-800'
+                      }`}>
+                        {c.program}
+                      </span>
+                    </td>
+                    <td className="p-3 font-semibold text-amber-900 bg-amber-50/50 rounded">{c.schedule}</td>
+                    <td className="p-3 font-bold text-slate-900">{c.name}</td>
+                    <td className="p-3 font-semibold text-slate-700">{c.teacher}</td>
+                    <td className="p-3 text-center font-mono font-bold text-amber-700">{c.credits}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

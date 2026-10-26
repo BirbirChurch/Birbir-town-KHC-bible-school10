@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { X, Printer, Download, Award, CheckCircle2, ShieldCheck, GraduationCap, Calendar, BookOpen, Loader2, Lock, AlertCircle } from 'lucide-react';
 import { Course, GradeBreakdown, OfficialSignaturesConfig, Student } from '../types.ts';
 import { calculateGradeDetails, getCourseAssessmentItems, getEffectiveGradeValues, getGradeKey, resolveGradeBreakdown } from '../utils/gradeCalculations.ts';
-import { getCurriculumForStudent, loadHistorical2018Courses, getDeletedCourseIdsSet } from '../data/curriculumCourses.ts';
+import { getCurriculumForStudent, loadHistorical2018Courses } from '../data/curriculumCourses.ts';
 import { CHURCH_LOGO } from '../assets/logo.ts';
 import { downloadElementAsPdf, printElementDirectly } from '../utils/pdfExport.ts';
 import { OFFICIAL_GRADING_SCALE } from '../data/initialData.ts';
@@ -41,16 +41,15 @@ export const GraduationTranscriptModal: React.FC<GraduationTranscriptModalProps>
     let cumCredits = 0;
     let cumPoints = 0;
 
-    const deletedSet = getDeletedCourseIdsSet();
-    const historicalCourses = loadHistorical2018Courses().filter((c) => !deletedSet.has(c.id));
+    const historicalCourses = loadHistorical2018Courses();
 
     // 1. Term 1: 2018 ዓ.ም — 1ኛ ሴሚስተር
-    const term1Curriculum = (curriculum[0]?.courses || []).filter((c) => !deletedSet.has(c.id));
+    const term1Curriculum = curriculum[0]?.courses || [];
     const term1Historical = historicalCourses.filter(
       (c) => (c.academicYear === '2018' || !c.academicYear) && (c.semester === '1' || !c.semester)
     );
     const term1All = allCourses.filter(
-      (c) => !deletedSet.has(c.id) && (c.academicYear === '2018' || c.id.startsWith('dip_sem1')) && (c.semester === '1' || !c.semester)
+      (c) => (c.academicYear === '2018' || c.id.startsWith('dip_sem1')) && (c.semester === '1' || !c.semester)
     );
     const term1CoursesMap = new Map<string, { id: string; code?: string; name: string; credits: number; teacher: string }>();
     term1Curriculum.forEach((c) => term1CoursesMap.set(c.id, { ...c }));
@@ -74,12 +73,12 @@ export const GraduationTranscriptModal: React.FC<GraduationTranscriptModalProps>
     });
 
     // 2. Term 2: 2018 ዓ.ም — 2ኛ ሴሚስተር
-    const term2Curriculum = (curriculum[1]?.courses || []).filter((c) => !deletedSet.has(c.id));
+    const term2Curriculum = curriculum[1]?.courses || [];
     const term2Historical = historicalCourses.filter(
       (c) => c.academicYear === '2018' && c.semester === '2'
     );
     const term2All = allCourses.filter(
-      (c) => !deletedSet.has(c.id) && (c.academicYear === '2018' || c.id.startsWith('dip_sem2')) && c.semester === '2'
+      (c) => (c.academicYear === '2018' || c.id.startsWith('dip_sem2')) && c.semester === '2'
     );
     const term2CoursesMap = new Map<string, { id: string; code?: string; name: string; credits: number; teacher: string }>();
     term2Curriculum.forEach((c) => term2CoursesMap.set(c.id, { ...c }));
@@ -104,9 +103,9 @@ export const GraduationTranscriptModal: React.FC<GraduationTranscriptModalProps>
 
     // 3. Term 3: 2019 ዓ.ም — 1ኛ ሴሚስተር
     const term3Active = allCourses.filter(
-      (c) => !deletedSet.has(c.id) && (c.semester === '1' || !c.semester) && (c.academicYear === '2019' || !c.academicYear)
+      (c) => (c.semester === '1' || !c.semester) && (c.academicYear === '2019' || !c.academicYear)
     );
-    const term3Curriculum = (curriculum[2]?.courses || []).filter((c) => !deletedSet.has(c.id));
+    const term3Curriculum = curriculum[2]?.courses || [];
     const term3CoursesMap = new Map<string, { id: string; code?: string; name: string; credits: number; teacher: string }>();
     term3Curriculum.forEach((c) => term3CoursesMap.set(c.id, { ...c }));
     term3Active.forEach((c) => {
