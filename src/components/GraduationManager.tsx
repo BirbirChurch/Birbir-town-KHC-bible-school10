@@ -67,7 +67,10 @@ interface GraduationManagerProps {
   onUpdateStudents: (updatedStudents: Student[]) => void;
   showNotify: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
   onSaveGrades?: (updatedGrades: Record<string, GradeBreakdown>) => void;
+  onSaveCourses?: (updatedCourses: Course[]) => void;
   teachers?: string[];
+  onDeleteCourse?: (courseId: string) => void;
+  onOpenSampleCoursesModal?: () => void;
 }
 
 export const GraduationManager: React.FC<GraduationManagerProps> = ({
@@ -83,7 +86,10 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
   onUpdateStudents,
   showNotify,
   onSaveGrades,
-  teachers = PRELOADED_TEACHERS
+  onSaveCourses,
+  teachers = PRELOADED_TEACHERS,
+  onDeleteCourse,
+  onOpenSampleCoursesModal
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'verification' | 'graduates_grading' | 'archive'>('graduates_grading');
   const [searchTerm, setSearchTerm] = useState('');
@@ -200,6 +206,7 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
     );
     setHistorical2018Courses(updatedCourses);
     saveHistorical2018Courses(updatedCourses);
+    onSaveCourses?.(updatedCourses);
   };
 
   // Add a new criterion
@@ -388,6 +395,7 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
       );
       setHistorical2018Courses(updated);
       saveHistorical2018Courses(updated);
+      onSaveCourses?.(updated);
       showNotify(`የኮርስ «${formCourseName}» መረጃ በስኬት ተስተካክሏል!`, 'success');
     } else {
       // Create new course
@@ -405,6 +413,7 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
       const updated = [...historical2018Courses, newCourse];
       setHistorical2018Courses(updated);
       saveHistorical2018Courses(updated);
+      onSaveCourses?.(updated);
       setSelectedGradCourseId(newCourse.id);
       showNotify(`አዲስ የ2018 ኮርስ «${formCourseName}» (${formCourseSemester}ኛ ሴሚስተር) በስኬት ተመዝግቧል!`, 'success');
     }
@@ -413,14 +422,30 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
   };
 
   const handleDeleteHistoricalCourse = (courseId: string) => {
-    if (window.confirm('ይህን የ2018 የትምህርት ዓይነት ከዝርዝሩ ማሰረዝ ይፈልጋሉ?')) {
+    const targetCourse =
+      historical2018Courses.find((c) => c.id === courseId) ||
+      activeCoursesForGrading.find((c) => c.id === courseId) ||
+      courses.find((c) => c.id === courseId);
+    const courseName = targetCourse ? `«${targetCourse.name}»` : 'ይህንን የትምህርት ዓይነት';
+
+    if (window.confirm(`${courseName} የሚለውን የትምህርት ዓይነት ከሲስተሙ ማሰረዝ ይፈልጋሉ?`)) {
+      // Record permanently in deleted course IDs
+      try {
+        const storedDel = localStorage.getItem('bk_deleted_course_ids');
+        const currentDel = storedDel ? JSON.parse(storedDel) : [];
+        const updatedDel = Array.from(new Set([...currentDel, courseId]));
+        localStorage.setItem('bk_deleted_course_ids', JSON.stringify(updatedDel));
+      } catch (_) {}
+
       const updated = historical2018Courses.filter((c) => c.id !== courseId);
       setHistorical2018Courses(updated);
       saveHistorical2018Courses(updated);
+      onDeleteCourse?.(courseId);
+      onSaveCourses?.(updated);
       if (selectedGradCourseId === courseId) {
         setSelectedGradCourseId(updated[0]?.id || '');
       }
-      showNotify('ኮርሱ ከ2018 ዝርዝር ተሰርዟል!', 'info');
+      showNotify(`${courseName} ከሲስተሙ ተሰርዟል!`, 'info');
     }
   };
 
@@ -1030,6 +1055,18 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
                 <span>+ አዲስ የ2018 ኮርስ ጨምር</span>
               </button>
 
+              {onOpenSampleCoursesModal && (
+                <button
+                  type="button"
+                  onClick={onOpenSampleCoursesModal}
+                  className="bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-300 text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="ሳንፈልጋቸው እንደ ናሙና የተሰሩ የትምህርት ዓይነቶችን መርጦ ለመደለት"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span>የናሙና ኮርሶች መደለቻ</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => setIsExcelUploadOpen(true)}
@@ -1182,16 +1219,15 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
                     <span>የኮርሱን መረጃ አሻሽል (Edit)</span>
                   </button>
 
-                  {gradingYear === '2018' && historical2018Courses.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteHistoricalCourse(selectedGradCourse.id)}
-                      className="bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs p-1.5 rounded-xl transition-all cursor-pointer"
-                      title="ኮርሱን ከ2018 ዝርዝር አስወግድ"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteHistoricalCourse(selectedGradCourse.id)}
+                    className="bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 text-xs px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    title="ይህንን ኮርስ ከሲስተሙ አስወግድ (Delete)"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>ይህንን ኮርስ ሰርዝ (Delete)</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -1932,7 +1968,7 @@ export const GraduationManager: React.FC<GraduationManagerProps> = ({
       {selectedTranscriptStudent && (
         <GraduationTranscriptModal
           student={selectedTranscriptStudent}
-          allCourses={courses}
+          allCourses={[...courses, ...historical2018Courses]}
           grades={grades}
           currentYear={currentYear}
           currentSemester={currentSemester}

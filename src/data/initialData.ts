@@ -1,5 +1,6 @@
 import { GradingScaleItem, Student, Course } from '../types.ts';
 import { sortStudentsByAmharicName } from '../utils/amharicSort.ts';
+import { getInitial2018HistoricalCourses } from './curriculumCourses.ts';
 
 // Official 13-Tier Grading Scale Requested by User
 export const OFFICIAL_GRADING_SCALE: GradingScaleItem[] = [
@@ -277,7 +278,8 @@ export const PRELOADED_COURSES: Course[] = [
     schedule: 'ጥር 3 – 17/2019',
     credits: 3,
     remarks: ''
-  }
+  },
+  ...getInitial2018HistoricalCourses()
 ];
 
 export const DEFAULT_TEACHER_KEYS: Record<string, string> = {

@@ -64,6 +64,8 @@ interface DeanPortalProps {
   onClearAllGrades?: () => void;
   churchLogo?: string;
   onUpdateStudents?: (updated: Student[]) => void;
+  onSaveCourses?: (updatedCourses: Course[]) => void;
+  onOpenSampleCoursesModal?: () => void;
 }
 
 export const DeanPortal: React.FC<DeanPortalProps> = ({
@@ -96,7 +98,9 @@ export const DeanPortal: React.FC<DeanPortalProps> = ({
   onSaveOfficialConfig,
   onClearAllGrades,
   churchLogo,
-  onUpdateStudents
+  onUpdateStudents,
+  onSaveCourses,
+  onOpenSampleCoursesModal
 }) => {
   const [activeTab, setActiveTab] = useState<'courses' | 'supervision' | 'transcripts' | 'teachers' | 'graduation' | 'official_signatures'>('courses');
   const [courseProgramFilter, setCourseProgramFilter] = useState<'ALL' | ProgramType>('ALL');
@@ -601,8 +605,20 @@ export const DeanPortal: React.FC<DeanPortalProps> = ({
                 className="bg-emerald-800 hover:bg-emerald-900 text-white text-xs px-3.5 py-2 rounded-xl font-bold shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>አዲስ የትምህርት ዓይነት ጨምር</span>
+                <span>+ አዲስ የትምህርት ዓይነት ጨምር</span>
               </button>
+
+              {onOpenSampleCoursesModal && (
+                <button
+                  type="button"
+                  onClick={onOpenSampleCoursesModal}
+                  className="bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 text-xs px-3.5 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="ሳንፈልጋቸው እንደ ናሙና የተሰሩ የትምህርት ዓይነቶችን ለመደለት"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span>የናሙና ኮርሶች መደለቻ</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -1084,7 +1100,10 @@ export const DeanPortal: React.FC<DeanPortalProps> = ({
           onUpdateStudents={onUpdateStudents || (() => {})}
           showNotify={showNotify}
           onSaveGrades={onSaveGrades}
+          onSaveCourses={onSaveCourses}
           teachers={teachers}
+          onDeleteCourse={onDeleteCourse}
+          onOpenSampleCoursesModal={onOpenSampleCoursesModal}
         />
 
       )}

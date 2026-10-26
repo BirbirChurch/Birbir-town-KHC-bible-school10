@@ -61,6 +61,7 @@ interface RegistrarPortalProps {
   teachers?: string[];
   userPasswords?: Record<string, string>;
   onOpenPasswordModal?: (studentUid: string, studentName: string) => void;
+  onSaveCourses?: (updatedCourses: Course[]) => void;
 }
 
 export const RegistrarPortal: React.FC<RegistrarPortalProps> = ({
@@ -87,7 +88,8 @@ export const RegistrarPortal: React.FC<RegistrarPortalProps> = ({
   onUpdateStudents,
   teachers,
   userPasswords = {},
-  onOpenPasswordModal
+  onOpenPasswordModal,
+  onSaveCourses
 }) => {
   const [activeTab, setActiveTab] = useState<'students' | 'teacher_assignments' | 'course_grades' | 'all_grades' | 'graduation'>('students');
   const [searchTerm, setSearchTerm] = useState('');
@@ -1097,6 +1099,7 @@ export const RegistrarPortal: React.FC<RegistrarPortalProps> = ({
           onUpdateStudents={onUpdateStudents || (() => {})}
           showNotify={showNotify}
           onSaveGrades={onSaveGrades}
+          onSaveCourses={onSaveCourses}
           teachers={teachers}
         />
       )}
