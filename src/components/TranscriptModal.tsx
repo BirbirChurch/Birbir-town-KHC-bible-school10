@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X, Printer, ShieldCheck, Download, Loader2, Lock } from 'lucide-react';
 import { Course, GradeBreakdown, OfficialSignaturesConfig, Student } from '../types.ts';
 import { calculateGradeDetails, calculateStudentGPA, getCourseAssessmentItems, getEffectiveGradeValues, getGradeKey, resolveGradeBreakdown, is2018CandidateStudent } from '../utils/gradeCalculations.ts';
 import { OFFICIAL_GRADING_SCALE } from '../data/initialData.ts';
 import { CHURCH_LOGO } from '../assets/logo.ts';
 import { downloadElementAsPdf, printElementDirectly } from '../utils/pdfExport.ts';
+import { loadHistorical2018Courses } from '../data/curriculumCourses.ts';
 
 interface TranscriptModalProps {
   student: Student;
@@ -32,24 +33,32 @@ export const TranscriptModal: React.FC<TranscriptModalProps> = ({
   isStudentViewer = false
 }) => {
   const isCandidate = is2018CandidateStudent(student);
-  const studentCourses = courses.filter((c) => {
-    if (c.program !== student.program) return false;
-    if (!isCandidate) {
-      if (
-        c.academicYear === '2018' ||
-        c.id.startsWith('dip_sem1') ||
-        c.id.startsWith('dip_sem2') ||
-        c.id.startsWith('deg_p')
-      ) {
+
+  const studentCourses = useMemo(() => {
+    if (currentYear === '2018') {
+      const historical = loadHistorical2018Courses();
+      return historical.filter((c) => c.program === 'Diploma' && (c.semester === currentSemester || !c.semester));
+    }
+    return courses.filter((c) => {
+      if (c.program !== student.program) return false;
+      if (!isCandidate) {
+        if (
+          c.academicYear === '2018' ||
+          c.id.startsWith('dip_sem1') ||
+          c.id.startsWith('dip_sem2') ||
+          c.id.startsWith('deg_p')
+        ) {
+          return false;
+        }
+      }
+      if (c.semester && currentSemester && c.semester !== currentSemester) {
         return false;
       }
-    }
-    if (c.semester && currentSemester && c.semester !== currentSemester) {
-      return false;
-    }
-    return true;
-  });
-  const gpa = calculateStudentGPA(student, courses, grades, currentYear, currentSemester);
+      return true;
+    });
+  }, [courses, student.program, isCandidate, currentYear, currentSemester]);
+
+  const gpa = calculateStudentGPA(student, currentYear === '2018' ? loadHistorical2018Courses() : courses, grades, currentYear, currentSemester);
 
   let totalCredits = 0;
   let totalGradePoints = 0;

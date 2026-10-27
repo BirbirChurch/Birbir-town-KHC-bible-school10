@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { User, Award, Calendar, BookOpen, Clock, Printer, AlertTriangle, CheckCircle2, Bookmark, GraduationCap, Lock } from 'lucide-react';
 import { Course, GradeBreakdown, OfficialSignaturesConfig, Student } from '../types.ts';
-import { calculateGradeDetails, calculateStudentGPA, getCourseAssessmentItems, getEffectiveGradeValues, getGradeKey, is2018CandidateStudent } from '../utils/gradeCalculations.ts';
+import { calculateGradeDetails, calculateStudentGPA, getCourseAssessmentItems, getEffectiveGradeValues, getGradeKey, is2018CandidateStudent, resolveGradeBreakdown } from '../utils/gradeCalculations.ts';
 import { GraduationTranscriptModal } from './GraduationTranscriptModal.tsx';
+import { loadHistorical2018Courses } from '../data/curriculumCourses.ts';
 
 interface StudentPortalProps {
   student: Student;
@@ -48,31 +49,60 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
       : gradePublished
   ) === true;
 
-  // Check if student is a graduating candidate (2018 batch / candidate / graduated)
+  // Helper to identify 2018 Diploma Entrants (the 10 Diploma students admitted in 2018)
+  const is2018DiplomaEntrant =
+    student.program === 'Diploma' &&
+    (student.admissionYear === '2018' || (student.id && student.id.startsWith('2018')));
+
   const isGraduatingCandidate = is2018CandidateStudent(student);
 
-  const studentCourses = courses.filter((c) => {
-    if (c.program !== student.program) return false;
-    if (!isGraduatingCandidate) {
-      if (
-        c.academicYear === '2018' ||
-        c.id.startsWith('dip_sem1') ||
-        c.id.startsWith('dip_sem2') ||
-        c.id.startsWith('deg_p')
-      ) {
-        return false;
+  // Active Year and Semester selected by student
+  const [activeYear, setActiveYear] = useState<string>(currentYear || '2019');
+  const [activeSem, setActiveSem] = useState<string>(currentSemester || '1');
+
+  // Available tabs for this student
+  const availableTabs = useMemo(() => {
+    const tabs: Array<{ year: string; sem: string; label: string }> = [];
+
+    if (is2018DiplomaEntrant) {
+      tabs.push({ year: '2018', sem: '1', label: '2018 ዓ/ም (1ኛ ሴሚስተር)' });
+      tabs.push({ year: '2018', sem: '2', label: '2018 ዓ/ም (2ኛ ሴሚስተር)' });
+      tabs.push({ year: '2019', sem: '1', label: '2019 ዓ/ም (1ኛ ሴሚስተር)' });
+      if (currentSemester === '2') {
+        tabs.push({ year: '2019', sem: '2', label: '2019 ዓ/ም (2ኛ ሴሚስተር)' });
+      }
+    } else {
+      // Non-2018 Diploma entrants (1st year Diploma & ALL Degree students)
+      tabs.push({ year: '2019', sem: '1', label: '2019 ዓ/ም (1ኛ ሴሚስተር)' });
+      if (currentSemester === '2') {
+        tabs.push({ year: '2019', sem: '2', label: '2019 ዓ/ም (2ኛ ሴሚስተር)' });
       }
     }
-    if (c.semester && currentSemester && c.semester !== currentSemester) {
-      return false;
-    }
-    return true;
-  });
+    return tabs;
+  }, [is2018DiplomaEntrant, currentSemester]);
 
-  const gpa = calculateStudentGPA(student, courses, grades, currentYear, currentSemester);
+  // Combine active courses with historical 2018 courses for 2018 Diploma entrants
+  const studentCourses = useMemo(() => {
+    if (activeYear === '2018') {
+      const historical = loadHistorical2018Courses();
+      return historical.filter((c) => c.program === 'Diploma' && (c.semester === activeSem || !c.semester));
+    }
+
+    return courses.filter((c) => {
+      if (c.program !== student.program) return false;
+      if (c.academicYear === '2018' || c.id.startsWith('dip_sem1') || c.id.startsWith('dip_sem2') || c.id.startsWith('deg_p')) {
+        return false;
+      }
+      if (c.semester && c.semester !== activeSem) {
+        return false;
+      }
+      return true;
+    });
+  }, [courses, student.program, activeYear, activeSem]);
+
+  const gpa = calculateStudentGPA(student, activeYear === '2018' ? loadHistorical2018Courses() : courses, grades, activeYear, activeSem);
 
   // Check if Full Graduation Transcript is explicitly permitted for this student
-  // STRICT REQUIREMENT: Only graduating students can have this; non-graduating students never have it!
   const isFullTranscriptAllowed = (
     isGraduatingCandidate &&
     isStudentReleased &&
@@ -135,7 +165,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
               <span>| መንገድ: <strong>{student.program === 'Diploma' ? '2 ዓመት (4 ሴሚስተር)' : student.degreeTrack === '2_YEAR' || student.priorDiploma ? 'የ2 ዓመት ድግሪ (ቀድሞ ዲፕሎማ)' : 'መደበኛ 3 ዓመት ድግሪ'}</strong></span>
             </p>
             <p className="text-[11px] text-emerald-800 font-bold mt-1">
-              🇪🇹 እንደ ኢትዮጵያ ዘመን አቆጣጠር፦ {currentYear} ዓ.ም ({currentSemester}ኛ ሴሚስተር)
+              🇪🇹 የሚመለከቱት፦ {activeYear} ዓ.ም ({activeSem}ኛ ሴሚስተር)
             </p>
           </div>
         </div>
@@ -150,7 +180,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                 title="የሴሚስተር ትራንስክሪፕት ይመልከቱ"
               >
                 <Printer className="w-4 h-4 text-amber-400" />
-                <span>የ{currentYear} ዓ.ም ሴሚስተር ትራንስክሪፕት</span>
+                <span>የ{activeYear} ዓ.ም ሴሚስተር ትራንስክሪፕት</span>
               </button>
 
               {/* ሙሉ የምረቃ ትራንስክሪፕት button is STRICTLY HIDDEN from students unless explicitly permitted */}
@@ -176,7 +206,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
 
           <div className="bg-gradient-to-br from-amber-50 to-amber-100/70 border border-amber-300 rounded-2xl p-3 text-center min-w-[120px] shadow-xs">
             <span className="block text-[10px] uppercase font-bold text-amber-800 tracking-wider">
-              የሴሚስተሩ GPA
+              የሴሚስተሩ GPA ({activeYear}/{activeSem})
             </span>
             <span className="text-2xl sm:text-3xl font-black text-amber-950 font-mono">
               {isStudentReleased ? gpa : '🔒 ***'}
@@ -205,13 +235,43 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Semester Grades */}
         <div className="lg:col-span-2 bg-white rounded-3xl shadow-sm border border-slate-200/80 p-6 space-y-4">
-          <div className="flex justify-between items-center border-b pb-3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-3">
             <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
               <Award className="w-5 h-5 text-emerald-700" />
               <span>የሴሚስተሩ የትምህርት ውጤት (Grade Report)</span>
             </h3>
             <span className="text-xs font-mono text-slate-500">{studentCourses.length} ኮርሶች</span>
           </div>
+
+          {/* Interactive Semester Selection Tabs */}
+          {availableTabs.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2 p-2 bg-slate-50 rounded-2xl border border-slate-200">
+              <span className="text-xs font-bold text-slate-700 px-2 flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-amber-600" />
+                <span>ሴሚስተር ይምረጡ፦</span>
+              </span>
+              {availableTabs.map((tab) => {
+                const isActive = activeYear === tab.year && activeSem === tab.sem;
+                return (
+                  <button
+                    key={tab.year + '_' + tab.sem}
+                    type="button"
+                    onClick={() => {
+                      setActiveYear(tab.year);
+                      setActiveSem(tab.sem);
+                    }}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-emerald-800 text-white shadow-sm ring-2 ring-emerald-600'
+                        : 'bg-white text-slate-700 hover:bg-slate-200/70 border border-slate-300'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-600">
@@ -228,8 +288,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {studentCourses.map((c, idx) => {
-                  const key = getGradeKey(student.uid, c.id, currentYear, currentSemester);
-                  const g = grades[key];
+                  const g = resolveGradeBreakdown(grades, student.uid, c.id, activeYear, activeSem, student.id);
                   const eff = getEffectiveGradeValues(g, getCourseAssessmentItems(c));
 
                   return (

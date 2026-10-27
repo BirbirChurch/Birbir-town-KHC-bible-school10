@@ -244,6 +244,13 @@ export function calculateStudentGPA(
 
   const studentCourses = allCourses.filter((c) => {
     if (c.program !== student.program) return false;
+    if (year === '2018') {
+      if (!isCandidate) return false;
+      return (
+        (c.academicYear === '2018' || c.id.startsWith('dip_sem1') || c.id.startsWith('dip_sem2')) &&
+        (c.semester === sem || !c.semester || sem === 'ALL')
+      );
+    }
     if (!isCandidate) {
       if (
         c.academicYear === '2018' ||
